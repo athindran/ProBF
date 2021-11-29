@@ -11,7 +11,7 @@ This code compares the ProBF-GP framework with the prior art LCBF which uses a n
 1.  cudatoolkit=10.1
 2.  python=3.8.5
 3.  tensorflow=2.3.0
-4.  keras==2.2.4
+4.  keras=2.2.4
 
 ### Instructions for running the experiment
 For running the LCBF, we use the tensorflow backbone provided by the authors of [2]. The environment used for running the code is listed in "tf_env.yml".
@@ -33,10 +33,15 @@ For running the Pro-BF, we use gpytorch for GP training. The environment used fo
 
 # Authors
 [Athindran Ramesh Kumar](https://sites.google.com/site/athindranrameshkumar)
+
 [Sulin Liu](https://liusulin.github.io/)
+
 [Jaime F. Fisac](https://ece.princeton.edu/people/jaime-fernandez-fisac)
+
 [Peter J. Ramadge](https://ece.princeton.edu/people/peter-j-ramadge)
+
 [Ryan P. Adams](https://www.cs.princeton.edu/~rpa/)
+
 Please reach out for any questions!
 
 # References
