@@ -272,7 +272,7 @@ num_violations_list = []
 num_episodes = 10
 num_tests = 10
 for rnd_seed in rnd_seed_list:
-  dirs = "./quad_modular_nn/"+str(rnd_seed)+"/"
+  dirs = "./experiments/quad_modular_nn/"+str(rnd_seed)+"/"
   #os.mkdir(dirs)
   if not os.path.isdir(dirs):
      os.mkdir(dirs)  
