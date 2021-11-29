@@ -19,6 +19,5 @@ For running the Pro-BF, we use gpytorch for GP training. The environment used fo
 # References
 [1] Python simulation and hardware library for learning and control. https://github.com/learning-and-control/core.git. Accessed: 2021-11-17.
 
-[2] A. J. Taylor, V. D. Dorobantu, H. M. Le, Y. Yue, and A. D. Ames. Episodic learning with
-control lyapunov functions for uncertain robotic systems. arXiv preprint arXiv:1903.01577,
-2019
+[2] A. Taylor, A. Singletary, Y. Yue, and A. Ames. Learning for safety-critical control with control
+barrier functions. In Learning for Dynamics and Control, pages 708–717. PMLR, 2020.
