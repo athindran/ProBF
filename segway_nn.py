@@ -24,6 +24,9 @@ from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Add, Dense, Dot, Input, Reshape, Lambda
 
 class LearnedSegwaySafetyAAR_NN(LearnedAffineDynamics):
+    """
+    Class to setup the CBF and derivatives
+    """
     def __init__(self, segway_safety_aar, scalar_res_aff_model):
         self.dynamics = segway_safety_aar
         self.res_model = scalar_res_aff_model
@@ -292,7 +295,8 @@ num_episodes = 2
 num_tests = 1
 for rnd_seed in rnd_seed_list:
   dirs = "./segway_modular_nn/"+str(rnd_seed)+"/"
-  os.mkdir(dirs)
+  if not os.path.isdir(dirs):
+      os.mkdir(dirs)  
   num_violations = run_experiment(rnd_seed, num_episodes, num_tests, dirs)
   num_violations_list.append(num_violations)
 

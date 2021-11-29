@@ -627,7 +627,10 @@ num_violations_list = []
 num_episodes = 5
 num_tests = 10
 for rnd_seed in rnd_seed_list:
-  num_violations = run_experiment(rnd_seed, num_episodes, num_tests, "./segway_modular4/"+str(rnd_seed)+"/")
+  dirs = "./segway_modular_gp/"+str(rnd_seed)+"/"
+  if not os.path.isdir(dirs):
+      os.mkdir(dirs)   
+  num_violations = run_experiment(rnd_seed, num_episodes, num_tests, dirs)
   num_violations_list.append(num_violations)
 
 print("num_violations_list: ", num_violations_list)
