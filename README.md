@@ -27,7 +27,7 @@ For running the LCBF, we use the tensorflow backbone provided by the authors of 
 5.  pytorch=1.7.1
 
 ### Instructions for running the experiment
-For running the Pro-BF, we use gpytorch for GP training. The environment used for running the code is listed in "pytogpu.yml".
+For running the Pro-BF, we use gpytorch for GP training. The environment used for running the code is listed in "pytorch_env.yml".
 1.  segway_gp.py - Train the ProBF-GP with 10 different seeds and test each time on 10 seeds for the segway framework.
 2.  quadrotor_gp.py - Train the ProBF-GP with 10 different seeds and test each time on 10 seeds for the quadrotor framework. 
 
