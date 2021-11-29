@@ -3,6 +3,9 @@ Implementation of Probabilistic Barrier Certificates submitted to NeuRIPS 2021 s
 
 This code compares the ProBF-GP framework with the prior art LCBF which uses a neural network. We build upon the code in [1].
 
+![image](segwaycomp.JPG)
+
+
 ### LCBF-NN
 For running the LCBF, we use the tensorflow backbone provided by the authors of [2]. The environment used for running the code is listed in "tf_env.yml".
 1.  segway_nn.py - Train the LCBF-NN with 10 different seeds and test each time on 10 seeds for the segway framework.
