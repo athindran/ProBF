@@ -3,7 +3,7 @@ Implementation of Probabilistic Barrier Certificates submitted to NeuRIPS 2021 s
 
 This code compares the ProBF-GP framework with the prior art LCBF which uses a neural network. We build upon the code in [1].
 
-![image](segwaycomp.JPG)
+![image](images/segwaycomp.JPG)
 
 
 ### LCBF-NN
