@@ -1,7 +1,7 @@
 # ProBF
-Implementation of Probabilistic Barrier Certificates submitted to NeuRIPS 2021 safeRL workshop.
+Implementation of Probabilistic Barrier Certificates submitted to NeurIPS 2021 safeRL workshop.
 
-This code compares the ProBF-GP framework with the prior art LCBF which uses a neural network. We build upon the code in [1].
+This code compares the ProBF-GP framework with the prior art LCBF which uses a neural network. We build upon the code in [1]. We added a controller that uses the mean and variance of the predictions to solve the ProBF-convex program. This controller can be found in "core/controllers/filter_controller_var.py".
 
 ![image](images/segwaycomp.JPG)
 
@@ -9,7 +9,7 @@ This code compares the ProBF-GP framework with the prior art LCBF which uses a n
 ## LCBF-NN
 ### Dependencies
 1.  cudatoolkit=10.1
-2.  python=3.8.5
+2.  python>=3.8.5
 3.  tensorflow=2.3.0
 4.  keras=2.2.4
 
@@ -23,7 +23,7 @@ For running the LCBF, we use the tensorflow backbone provided by the authors of 
 1.  cvxpy=1.1.10
 2.  gpytorch=1.3.1
 3.  cudatoolkit=10.1
-4.  python=3.9.2
+4.  python>=3.8.5
 5.  pytorch=1.7.1
 
 ### Instructions for running the experiment
@@ -38,9 +38,9 @@ For running the Pro-BF, we use gpytorch for GP training. The environment used fo
 
 [Jaime F. Fisac](https://ece.princeton.edu/people/jaime-fernandez-fisac)
 
-[Peter J. Ramadge](https://ece.princeton.edu/people/peter-j-ramadge)
-
 [Ryan P. Adams](https://www.cs.princeton.edu/~rpa/)
+
+[Peter J. Ramadge](https://ece.princeton.edu/people/peter-j-ramadge)
 
 Please reach out for any questions!
 
