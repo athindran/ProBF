@@ -13,9 +13,9 @@ import pickle
 import os
 from tensorflow.python.client import device_lib
 
-from SegwaySupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyAngleAngleRate
-from Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
-from AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessEpisode, shuffle_downsample, standardize, generateInitialPoints
+from utils.SegwaySupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyAngleAngleRate
+from utils.Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
+from utils.AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessEpisode, shuffle_downsample, standardize, generateInitialPoints
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 from core.dynamics import LearnedAffineDynamics

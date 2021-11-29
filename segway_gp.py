@@ -13,9 +13,9 @@ import torch
 import gpytorch
 from core.dynamics import LearnedAffineDynamics
 
-from SegwaySupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyAngleAngleRate
-from AuxFunc import findSafetyData, findLearnedSafetyData, postProcessEpisode, shuffle_downsample, standardize, generateInitialPoints
-from Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
+from utils.SegwaySupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyAngleAngleRate
+from utils.AuxFunc import findSafetyData, findLearnedSafetyData, postProcessEpisode, shuffle_downsample, standardize, generateInitialPoints
+from utils.Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
 
 device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"

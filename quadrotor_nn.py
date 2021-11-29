@@ -13,9 +13,9 @@ import pickle
 import os
 #from tensorflow.python.client import device_lib
 
-from QuadSupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyCoordinate
-from Plotting import plotQuadStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF, plotQuadTrajectoryNN
-from AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessEpisode, shuffle_downsample, standardize, generateQuadPoints
+from utils.QuadSupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyCoordinate
+from utils.Plotting import plotQuadStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF, plotQuadTrajectoryNN
+from utils.AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessEpisode, shuffle_downsample, standardize, generateQuadPoints
 
 #tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 from core.dynamics import LearnedAffineDynamics
