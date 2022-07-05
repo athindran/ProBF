@@ -1,7 +1,7 @@
 # ProBF
 Implementation of Probabilistic Barrier Certificates submitted to NeurIPS 2021 safeRL workshop.
 
-This code compares the ProBF-GP framework with the prior art LCBF which uses a neural network. We build upon the code in [1]. We added a controller that uses the mean and variance of the predictions to solve the ProBF-convex program. This controller can be found in "core/controllers/filter_controller_var.py".
+This code compares the our ProBF-GP framework with the prior art learned Control Barrier Functions which uses a neural network (LCBF-NN) [2]. We build upon the code in [1]. We added a controller that uses the mean and variance of the predictions to solve the ProBF-convex program. This controller can be found in "core/controllers/filter_controller_var.py".
 
 ![image](images/segwaycomp.JPG)
 
