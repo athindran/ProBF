@@ -1,17 +1,19 @@
-from core.dynamics import AffineDynamics, ConfigurationDynamics, LearnedDynamics, PDDynamics, ScalarDynamics
+from core.dynamics import AffineDynamics, ConfigurationDynamics, PDDynamics, ScalarDynamics
 from core.systems import Segway
-from core.controllers import Controller, FBLinController, LQRController, FilterController,PDController, QPController, FilterControllerVar
+from core.controllers import FilterController,PDController
 from core.util import differentiate
-from matplotlib.pyplot import cla, clf, figure, grid, legend, plot, savefig, show, subplot, title, xlabel, ylabel, fill_between
+from matplotlib.pyplot import cla, clf, figure, grid, legend, plot, show, subplot, xlabel, ylabel
 import numpy as np
 from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
 from numpy.random import uniform,seed
 from numpy.random import permutation
 from numpy import clip
-import os
 from core.dynamics import LearnedAffineDynamics
 
 class SegwayOutput(ConfigurationDynamics):
+    """
+      Class to represent observable output which is the first two dimensions for Segway
+    """
     def __init__(self, segway):
         ConfigurationDynamics.__init__(self, segway, 1)
         
@@ -25,7 +27,9 @@ class SegwayOutput(ConfigurationDynamics):
         return zeros((1, 2, 2))
 
 class SegwayPD(PDDynamics):
-    
+    """
+      Return proportional and derivative terms for use by the PD controller
+    """
     def proportional(self, x, t):
         return x[0:2] - array([0, .1383])
     
@@ -34,9 +38,6 @@ class SegwayPD(PDDynamics):
 
 def initializeSystem():
     # ## Segway Setup & FBLin/PD + PD Simulation
-    
-    # %%
-    # Segway System & Output Definition
 
     # Parameter Estimates
     m_b = 44.798 
@@ -67,10 +68,6 @@ def initializeSystem():
     sego_true = SegwayOutput(seg_true)
     segpd = SegwayPD()
 
-
-    # %%
-    # PD Controller Setup
-
     Q, R = 1000 * identity(2), identity(1)
     K_p = -2*array([[0, 0.8]])
     K_d = -2*array([[0.5, 0.3]])
@@ -79,7 +76,15 @@ def initializeSystem():
     return seg_est, seg_true, sego_est, sego_true, pd
 
 # PD 500 Hz Simulation   
-def simulatePDplot(seg_est, seg_true, pd):    
+def simulatePDplot(seg_est, seg_true, pd):
+    """
+    Simulates the PD controller and plot the comparison of the trajectories between estimated and true dynamics
+    
+    Inputs:
+      seg_est: Segway dynamics with parameter estimates
+      seg_true: Segway dynamics with true paramters
+      pd: PD controller
+    """   
     freq = 500 # Hz
     tend = 3
     x_0 = array([0, 0.2, 1, 1])
@@ -90,10 +95,6 @@ def simulatePDplot(seg_est, seg_true, pd):
 
     pd_true_data = seg_true.simulate(x_0, pd, ts_pd)
     xs_true_pd, us_true_pd = pd_true_data
-
-
-    # %%
-    # PD 500 Hz Plotting
 
     figure(figsize=(16, 16*2/3))
 
@@ -138,28 +139,27 @@ def simulatePDplot(seg_est, seg_true, pd):
     ylabel('$\\tau_1$', fontsize=16)
     legend(fontsize =16)
 
-    show()
-
 # Angle-Angle Rate Safety QP Setup
 def initializeSafetyFilter(seg_est, seg_true, pd):
     """
     Initialize CBFs for the true and estimated system.
     
-    Input:
-    seg_est - Segway nominal parametric model
-    seg_true - Segway true parametric model
-    pd - Stabilizing PD controller
+    Inputs:
+      seg_est - Segway nominal parametric model
+      seg_true - Segway true parametric model
+      pd - PD controller
     
-    Output:
-    safety_est- CBF for seg_est
-    safety_true - CBF for seg_true
-    flt_est - CBF-QP filter for seg_est
-    flt_True - CBF-QP filter for seg_true
+    Outputs:
+      safety_est- CBF for seg_est
+      safety_true - CBF for seg_true
+      flt_est - CBF-QP filter for seg_est
+      flt_True - CBF-QP filter for seg_true
     """
     
     theta_e = 0.1383
     angle_max = 0.2617 
     coeff = 1
+
     safety_est = SafetyAngleAngleRate( seg_est, theta_e, angle_max, coeff )
     safety_true = SafetyAngleAngleRate( seg_true, theta_e, angle_max, coeff)
     alpha = 10
@@ -177,6 +177,18 @@ def initializeSafetyFilter(seg_est, seg_true, pd):
 def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est):
     """
     Simulate the system with the CBF-QP filtering the actions.
+
+    Inputs:
+        seg_true: True dynamics of Segway.
+        seg_est: Dynamics estimate of Segway.
+        flt_true: Safety Filter using true dynamics.
+        flt_est: Safety Filter using estimated dynamics.
+
+    Outputs:
+        qp_estest_data: Trajectory when using flt_est on seg_est
+        qp_trueest_data: Trajectory when using flt_est on seg_true
+        qp_truetrue_data: Trajectory when using flt_true on seg_true
+        ts_qp: Sampling instants array
     """
     # Angle-Angle Rate Safety QP Simulation
     freq = 500 # Hz
@@ -201,6 +213,9 @@ def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est):
     
 # Angle-Angle Rate Safety Function Definition
 class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
+    """
+      Definition of CBF for Segway and its accompanying Lie derivatives.
+    """
     def __init__(self, segway, theta_e, angle_max, coeff):
         self.dynamics = segway
         self.theta_e = theta_e
@@ -208,62 +223,29 @@ class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
         self.coeff = coeff
         
     def eval( self, x, t ):
-        
+        """
+          Definition of CBF
+        """
         theta = x[1]
         theta_dot = x[3]
         return 0.5 * ( self.angle_max ** 2 - self.coeff * ( theta_dot ** 2 ) - ( theta - self.theta_e ) ** 2 )
     
     def dhdx( self, x , t ):
-        
+        """
+          Derivative of CBF wrt state  
+        """
         theta = x[1]
         theta_dot = x[3]
         return array( [ 0, - ( theta - self.theta_e ), 0, - self.coeff * theta_dot ] )
     
     def drift( self, x, t ):
-        
+        """
+          Lie derivative wrt control-independent dynamics
+        """
         return dot( self.dhdx( x, t ), self.dynamics.drift( x, t ) )
         
     def act(self, x, t):
-        
+        """
+          Lie derivative wrt control-dependent dynamics
+        """   
         return dot( self.dhdx( x, t ), self.dynamics.act( x, t ) )
-
-    
-# Angle-Angle Rate Safety QP Setup
-def initializeSafetyFilter(seg_est, seg_true, pd):
-    theta_e = 0.1383
-    angle_max = 0.2617 
-    coeff = 1
-    safety_est = SafetyAngleAngleRate( seg_est, theta_e, angle_max, coeff )
-    safety_true = SafetyAngleAngleRate( seg_true, theta_e, angle_max, coeff)
-    alpha = 10
-    comp_safety = lambda r: alpha * r
-    phi_0_est = lambda x, t: safety_est.drift( x, t ) + comp_safety( safety_est.eval( x, t ) )
-    phi_1_est = lambda x, t: safety_est.act( x, t )
-    phi_0_true = lambda x, t: safety_true.drift( x, t ) + comp_safety( safety_true.eval( x, t ) )
-    phi_1_true = lambda x, t: safety_true.act( x, t )
-
-    flt_est = FilterController( seg_est, phi_0_est, phi_1_est, pd )
-    flt_true = FilterController( seg_true, phi_0_true, phi_1_true, pd)
-    
-    return safety_est, safety_true, flt_est, flt_true
-
-def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est):
-    # Angle-Angle Rate Safety QP Simulation
-    freq = 500 # Hz
-    tend = 3
-    x_0 = array([0, 0.2, 0.2, 0.1])
-    ts_qp = linspace(0, tend, tend*freq + 1)
-
-    # Estimated System - Estimated Controller
-    qp_estest_data = seg_est.simulate(x_0, flt_est, ts_qp)
-    xs_qp_estest, us_qp_estest = qp_estest_data
-
-    # True System - True Controller
-    qp_truetrue_data = seg_true.simulate(x_0, flt_true, ts_qp)
-    xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
-
-    # True System - Estimated Controller
-    qp_trueest_data = seg_true.simulate(x_0, flt_est, ts_qp)
-    xs_qp_trueest, us_qp_trueest = qp_trueest_data
-
-    return qp_estest_data, qp_truetrue_data, qp_trueest_data, ts_qp
