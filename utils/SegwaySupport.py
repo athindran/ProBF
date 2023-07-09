@@ -5,6 +5,7 @@ from core.util import differentiate
 from matplotlib.pyplot import cla, clf, figure, grid, legend, plot, show, subplot, xlabel, ylabel
 import numpy as np
 from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
+from torch import Tensor as tarray
 from numpy.random import uniform,seed
 from numpy.random import permutation
 from numpy import clip
@@ -237,6 +238,14 @@ class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
         theta = x[1]
         theta_dot = x[3]
         return array( [ 0, - ( theta - self.theta_e ), 0, - self.coeff * theta_dot ] )
+
+    def dhdx_torch( self, x , t ):
+        """
+          Derivative of CBF wrt state in torch
+        """
+        theta = x[1]
+        theta_dot = x[3]
+        return tarray( [ 0, - ( theta - self.theta_e ), 0, - self.coeff * theta_dot ] )
     
     def drift( self, x, t ):
         """

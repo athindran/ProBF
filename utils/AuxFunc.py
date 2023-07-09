@@ -85,14 +85,13 @@ def standardize(data_train):
       Outputs:
         (train_set, test_set, mean, std), The standardized dataset and their mean and standard deviation before processing.
     """
-    std = np.std(data_train, 0, keepdims=True)
+    std = np.std( data_train, 0, keepdims=True )
+    ## If it is constant, no division by any number
     std[std == 0] = 1
-    mean = np.mean(data_train, 0, keepdims=True)
+    mean = np.mean( data_train, 0, keepdims=True )
     data_train_standardized = (data_train - mean) / std
-    output = [data_train_standardized]
-    output.append(mean)
-    output.append(std)
-    return output  
+    
+    return data_train_standardized, mean, std
 
 def findSafetyData(safety_filt, sim_data, ts_qp):    
     """
@@ -163,9 +162,9 @@ def findLearnedSafetyData_gp(safety_learned, sim_data, ts_post_qp):
         hdots_post_num: Numerical Time derivatives of CBF
     """
     xs_post_qp, us_post_qp = sim_data
-    drifts_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_post_qp, ts_post_qp)])
+    drifts_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comparison_safety(safety_learned.eval(x,t)) for x, t in zip(xs_post_qp, ts_post_qp)])
     acts_learned_post_qp = array([safety_learned.act_learned(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
-    hdots_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) + dot(safety_learned.act_learned(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
+    hdots_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comparison_safety(safety_learned.eval(x,t)) + dot(safety_learned.act_learned(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
 
     # Learned Controller Plotting
 
@@ -190,7 +189,7 @@ def postProcessEpisode(xs_curr, us, ts_qp, safety_est, safety_true, safety_learn
     # evaluate dynamics for f(x) and g(x)
     drift_est = array([safety_est.drift(x,t) for x, t in zip(xs_curr, ts_qp)])
     drift_true = array([safety_true.drift(x,t) for x, t in zip(xs_curr, ts_qp)])
-    drift_learned = array([safety_learned.drift_learned(x,t)[0]-safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_curr, ts_qp)])
+    drift_learned = array([safety_learned.drift_learned(x,t)[0]-safety_learned.comparison_safety(safety_learned.eval(x,t)) for x, t in zip(xs_curr, ts_qp)])
     #drift_dynamics_diff = drift_dynamics_est - drift_dynamics_true
     drift_var = array([safety_learned.drift_learned(x,t)[1] for x, t in zip(xs_curr, ts_qp)])
     

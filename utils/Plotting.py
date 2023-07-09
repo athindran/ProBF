@@ -63,6 +63,7 @@ def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd
         legend(["Learned","True","Predict compute"])
 
         f.savefig(savedir+"/ep{}_learned_ab_seed{}.pdf".format(str(i+2), str(rnd_seed)), bbox_inches='tight')
+        f.savefig(savedir+"/ep{}_learned_ab_seed{}.png".format(str(i+2), str(rnd_seed)), bbox_inches='tight')
 
 def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, savename):
     
