@@ -163,9 +163,9 @@ def findLearnedSafetyData_gp(safety_learned, sim_data, ts_post_qp):
         hdots_post_num: Numerical Time derivatives of CBF
     """
     xs_post_qp, us_post_qp = sim_data
-    drifts_learned_post_qp = array([safety_learned.driftn(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_post_qp, ts_post_qp)])
-    acts_learned_post_qp = array([safety_learned.actn(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
-    hdots_learned_post_qp = array([safety_learned.driftn(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) + dot(safety_learned.actn(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
+    drifts_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_post_qp, ts_post_qp)])
+    acts_learned_post_qp = array([safety_learned.act_learned(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
+    hdots_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comp_safety(safety_learned.eval(x,t)) + dot(safety_learned.act_learned(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
 
     # Learned Controller Plotting
 
@@ -190,15 +190,15 @@ def postProcessEpisode(xs_curr, us, ts_qp, safety_est, safety_true, safety_learn
     # evaluate dynamics for f(x) and g(x)
     drift_est = array([safety_est.drift(x,t) for x, t in zip(xs_curr, ts_qp)])
     drift_true = array([safety_true.drift(x,t) for x, t in zip(xs_curr, ts_qp)])
-    drift_learned = array([safety_learned.driftn(x,t)[0]-safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_curr, ts_qp)])
+    drift_learned = array([safety_learned.drift_learned(x,t)[0]-safety_learned.comp_safety(safety_learned.eval(x,t)) for x, t in zip(xs_curr, ts_qp)])
     #drift_dynamics_diff = drift_dynamics_est - drift_dynamics_true
-    drift_var = array([safety_learned.driftn(x,t)[1] for x, t in zip(xs_curr, ts_qp)])
+    drift_var = array([safety_learned.drift_learned(x,t)[1] for x, t in zip(xs_curr, ts_qp)])
     
     act_est = np.squeeze(array([safety_est.act(x,t) for x, t in zip(xs_curr, ts_qp)]),axis=-1)
     act_true = np.squeeze(array([safety_true.act(x,t) for x, t in zip(xs_curr, ts_qp)]),axis=-1)
-    act_learned = np.squeeze(array([safety_learned.actn(x,t)[0] for x, t in zip(xs_curr, ts_qp)]),axis=-1)
+    act_learned = np.squeeze(array([safety_learned.act_learned(x,t)[0] for x, t in zip(xs_curr, ts_qp)]),axis=-1)
     
-    act_var = np.squeeze(array([safety_learned.actn(x,t)[1] for x, t in zip(xs_curr, ts_qp)]),axis=-1)
+    act_var = np.squeeze(array([safety_learned.act_learned(x,t)[1] for x, t in zip(xs_curr, ts_qp)]),axis=-1)
     #act_dynamics_diff = act_dynamics_est - act_dynamics_true
     res_expected = array([(act_true-act_est)*u+drift_true-drift_est for u in us])
     
