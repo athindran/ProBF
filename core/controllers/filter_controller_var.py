@@ -42,7 +42,7 @@ class FilterControllerVar(Controller):
         
         # Construct the matrices of the convex program
         sigma = self.sigma
-        delta = scipy.linalg.sqrtm(np.array([[vara[0],varab[0],0],[varab[0],varb[0],0],[0,0,0]]))
+        delta = scipy.linalg.sqrtm(np.array([[vara[0], varab[0], 0],[varab[0], varb[0], 0],[0, 0, 0]]))
         cu = np.array([[0],[0],[1]])
         prob = cp.Problem(cp.Minimize(cp.square(u[0])-2*u[0]*uc[0]),[phi1[0]*u[0]+phi0[0]-sigma*u[2]>=0,cp.norm(delta@u)<=cu.T@u,u[2]>=0,u[1]-1==0])
     
@@ -53,9 +53,7 @@ class FilterControllerVar(Controller):
           pass 
     
         ucurr = u
-        if prob.status not in ["optimal","optimal_inaccurate"]:
-          print(prob.status)  
-          print("Not solved",phi0,phi1,vara,varab,varb,sigma)   
+        if prob.status not in ["optimal","optimal_inaccurate"]:  
           while prob.status not in ["optimal","optimal_inaccurate"]:
             sigmahigh = sigma  
             u = cp.Variable((3))
@@ -67,7 +65,6 @@ class FilterControllerVar(Controller):
               pass
         
           ucurr = u
-          print("Sigma reduced to:", sigma)
         self.sigma = sigma
         
         return self.desired_controller.process(np.array([ucurr[0].value])).T

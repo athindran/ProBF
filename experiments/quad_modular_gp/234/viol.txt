@@ -1,3 +1,0 @@
-num_violations 0.2 3
-num_violations 0.5 3
-num_violations 0.8 3
