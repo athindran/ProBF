@@ -1,13 +1,9 @@
-from core.dynamics import AffineDynamics, ConfigurationDynamics, LearnedDynamics, PDDynamics, ScalarDynamics
-from core.systems import Segway
-from core.controllers import Controller, FBLinController, LQRController, FilterController, PDController, QPController, FilterControllerVar
+from core.controllers import Controller, FilterController, FilterControllerVar
 from core.util import differentiate
-from matplotlib.pyplot import figure, legend, plot, xlabel, ylabel, fill_between
+from matplotlib.pyplot import figure, legend, plot, xlabel, ylabel, fill_between, close
 import numpy as np
-from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
-from numpy.random import uniform, seed
-from numpy.random import permutation
-from numpy import clip
+from numpy import array, concatenate, linspace, ones, size, sqrt, zeros
+from numpy.random import seed
 import os
 import torch
 import gpytorch
@@ -18,9 +14,9 @@ from utils.SegwaySupport import initializeSystem, initializeSafetyFilter, simula
 from utils.AuxFunc import findSafetyData, findLearnedSafetyData_gp, postProcessEpisode, downsample, standardize, generateInitialPoints
 from utils.Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
 
-device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-print(device)    # %%
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = 'cpu'
+print("Device", device)
 
 def plotPredictions(safety_learned, data_episode, savename):
     """
@@ -38,7 +34,7 @@ def plotPredictions(safety_learned, data_episode, savename):
     test_inputs = (torch.from_numpy( drift_inputs ) - torch.reshape(safety_learned.preprocess_mean, (-1, 8)).repeat(npoints, 1) )
     test_inputs = torch.divide(test_inputs, torch.reshape(safety_learned.preprocess_std, (-1, 8)).repeat(npoints, 1) )
     test_inputs = torch.cat((torch.from_numpy(us/safety_learned.usstd), test_inputs), axis=1)
-    test_inputs = test_inputs.float()
+    test_inputs = test_inputs.float().to(device)
 
     residual_model.eval()
     likelihood.eval()
@@ -57,6 +53,8 @@ def plotPredictions(safety_learned, data_episode, savename):
     ylabel('CBF residuals')
     legend(["Prediction", "Actual"])
     f.savefig(savename, bbox_inches='tight')
+
+    close()
     
 # Learned Segway Angle-Angle Rate Safety
 class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
@@ -108,7 +106,7 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         """
         xtorch = torch.from_numpy( x )
         xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
-        xfull = torch.reshape(xfull, (-1, 9)).float()
+        xfull = torch.reshape(xfull, (-1, 9)).float().to(device)
 
         cross1 = self.residual_model.k1(xfull, self.input_data_tensor)
         cross1 = cross1.evaluate()
@@ -120,7 +118,7 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         mean = bmean*self.residual_std
         variance = (self.residual_model.k2(xfull, xfull)).evaluate() - torch.matmul( torch.matmul(cross2, self.Kinv), cross2.T )
         varab = -torch.matmul( torch.matmul(cross1, self.Kinv), cross2.T)
-        return [self.dynamics.drift(x, t) + mean.detach().numpy().ravel() + self.residual_mean + self.comparison_safety(self.eval(x, t)), variance.detach().numpy().ravel(), varab.detach().numpy().ravel()]
+        return [self.dynamics.drift(x, t) + mean.detach().cpu().numpy().ravel() + self.residual_mean + self.comparison_safety(self.eval(x, t)), variance.detach().cpu().numpy().ravel(), varab.detach().cpu().numpy().ravel()]
     
     def act_learned(self, x, t):
         """
@@ -128,12 +126,12 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         """
         xtorch = torch.from_numpy( x )
         xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
-        xfull = torch.reshape(xfull, (-1, 9)).float()
+        xfull = torch.reshape(xfull, (-1, 9)).float().to(device)
 
         cross = self.residual_model.k1(xfull, self.input_data_tensor).evaluate()/self.usstd
         mean = torch.matmul(cross, self.alpha)
         variancequad = self.residual_model.k1(xfull, xfull).evaluate()/(self.usstd)**2 - torch.matmul( torch.matmul(cross, self.Kinv), cross.T)
-        return self.dynamics.act(x, t) + mean.detach().numpy().ravel(), variancequad.detach().numpy().ravel()
+        return self.dynamics.act(x, t) + mean.detach().cpu().numpy().ravel(), variancequad.detach().cpu().numpy().ravel()
     
     def process_episode(self, xs, us, ts, window=3):
         """
@@ -243,7 +241,7 @@ class CombinedController(Controller):
         u_2 = self.controller_2.process( self.controller_2.eval( x, t ) )
         return self.weights[ 0 ] * u_1 + self.weights[ 1 ] * u_2
 
-def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests=10, sigma=0.0, save_dir="./"):                       
+def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests=10, sigma=0.0, figure_dir="./"):                       
   """
     Evaluate trained model and plot various comparisons
   """
@@ -278,7 +276,7 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
     data_episode = safety_learned.process_episode(xs_post_qp, us_post_qp, ts_post_qp)
     
     # Plot of residual predictions from GP
-    savename = save_dir + "/residual_predict_seed{}_test{}.png".format(str(rnd_seed), str(i))
+    savename = figure_dir + "/residual_predict_seed{}_test{}.png".format(str(rnd_seed), str(i))
     plotPredictions(safety_learned, data_episode, savename)
 
     drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, hdots_post_num = findLearnedSafetyData_gp(safety_learned, qp_data_post, ts_post_qp)
@@ -294,7 +292,7 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
     theta_bound_l = ( safety_true.theta_e - safety_true.angle_max ) * ones( size( ts_post_qp ) )
 
     # Plotting
-    savename = save_dir+"/learned_filter_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir+"/learned_filter_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
     plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, 
                     us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
                         drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, 
@@ -320,7 +318,7 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
     hs_all = np.hstack((hs_1,hs_2,hs_3,hs_4,hs_5))
 
     # Learned CBF safety filter
-    savename = save_dir+"/learned_h_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir + "/learned_h_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
     plotLearnedCBF(ts_qp, hs_qp_trueest, hs_all, ts_post_qp, hs_post_qp, ebs, num_episodes, savename)
     
     # Phase Plane Plotting
@@ -329,14 +327,14 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
     theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
     ebs = int(len(state_data[0])/num_episodes)
     
-    savename = save_dir+"/learned_pp_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir + "/learned_pp_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
     plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, xs_post_qp, ebs, num_episodes, savename)
 
   # record violations
   print("seed: {}, num of violations: {}".format(rnd_seed, str(num_violations)))
   return num_violations
     
-def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
+def run_experiment(rnd_seed, num_episodes, num_tests, figure_dir, model_dir):
   from core.controllers import FilterControllerVar
   seed(rnd_seed)
   torch.manual_seed(rnd_seed)
@@ -465,7 +463,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
           #with torch.no_grad(), gpytorch.settings.max_cg_iterations(3000):
           with torch.no_grad(), gpytorch.settings.fast_computations(solves=False):
               #safety_learned.residual_model.to(device)
-              respred_test = likelihood(safety_learned.residual_model(input_data_test_tensor.cpu()))
+              respred_test = likelihood(safety_learned.residual_model(input_data_test_tensor))
 
           lower, upper = respred_test.confidence_region()
 
@@ -502,7 +500,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
       nfeat = input_data.shape[1]
       print("Number of data points: ", ndata)
 
-      residuals = residuals + 0.01*np.random.randn(residuals.size, )
+      #residuals = residuals + 0.01*np.random.randn(residuals.size, )
       if i > 0:
           ustd_list.append(usstd)
 
@@ -515,11 +513,11 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
 
       if i == 0:
           # save random initialization model      
-          torch.save(residual_model.state_dict(),"residual_model_iter_{}.pth".format(str(0)))
+          torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(0)))
           adam_lr = 0.03
           training_iter = 200
       elif i >= 10:
-          state_dict = torch.load("residual_model_iter_{}.pth".format(str(0)))
+          state_dict = torch.load(model_dir + "residual_model_iter_{}.pth".format(str(0)))
           residual_model.load_state_dict(state_dict)
           adam_lr = 0.04
           training_iter = 0
@@ -527,7 +525,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
           #load previous episode trained model
           #state_dict = torch.load("residual_model_iter_{}.pth".format(str(i)))
           # load random initialization
-          state_dict = torch.load("residual_model_iter_{}.pth".format(str(0)))
+          state_dict = torch.load(model_dir + "residual_model_iter_{}.pth".format(str(0)))
           residual_model.load_state_dict(state_dict)
           adam_lr = 0.01
           training_iter = 300
@@ -586,7 +584,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
       print("kernel lengthscale for b(x)", residual_model.covar_module.kernels[1].base_kernel.lengthscale)
       print("kernel scale for b(x)", residual_model.covar_module.kernels[1].outputscale.item())
       # save the current gp model with hyperparams
-      torch.save(residual_model.state_dict(),"residual_model_iter_{}.pth".format(str(i+1)))
+      torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(i+1)))
       
       """
       for k in range(i):
@@ -611,14 +609,13 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
 
       safety_learned = LearnedSegwaySafetyAAR( safety_est )
       
-      safety_learned.residual_model = residual_model.cpu()
-      safety_learned.likelihood = likelihood.cpu()
+      safety_learned.residual_model = residual_model
+      safety_learned.likelihood = likelihood
       safety_learned.usstd = usstd
 
       # Evaluate covariance matrix with the data  
-      safety_learned.Kinv = torch.inverse( residual_model.covar_module( input_data_tensor ).evaluate() 
-                                                + residual_model.likelihood.noise.item()*torch.eye( input_data_tensor.shape[0] ) )  
-      safety_learned.alpha = torch.matmul(safety_learned.Kinv, torch.from_numpy(residuals).float() )
+      safety_learned.Kinv = torch.pinverse( residual_model.covar_module( input_data_tensor ).evaluate() + residual_model.likelihood.noise.item()*torch.eye( input_data_tensor.shape[0] ).to(device) )  
+      safety_learned.alpha = torch.matmul(safety_learned.Kinv, torch.from_numpy(residuals).float().to(device) )
       safety_learned.input_data_tensor = input_data_tensor
       safety_learned.preprocess_mean = torch.from_numpy( preprocess_mean[0] )
       safety_learned.preprocess_std = torch.from_numpy( preprocess_std[0] )
@@ -638,26 +635,25 @@ def run_experiment(rnd_seed, num_episodes, num_tests, save_dir):
   if num_episodes > 1:
     ebs = int(len(state_data[0])/num_episodes)
     ebs_res = int(len(residual_pred_list[-1])/num_episodes)
-    #plotTrainStates(input_data_list, ebs_res, num_episodes, save_dir, rnd_seed)
+    #plotTrainStates(input_data_list, ebs_res, num_episodes, figure_dir, rnd_seed)
+    #plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
+    #                  residual_pred_lower_list, residual_pred_upper_list,residual_pred_compare_list, num_episodes, ebs,
+    #                    figure_dir, rnd_seed)
   else:
     ebs = len(state_data[0])
     ebs_res = 0
-    
-  plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
-                      residual_pred_lower_list, residual_pred_upper_list,residual_pred_compare_list, num_episodes, ebs,
-                    save_dir, rnd_seed)
 
-  num_violations_a = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,0, save_dir)
+  num_violations_a = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,0, figure_dir)
   print("viol-0: ", num_violations_a)
-  num_violations_b = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,0.5, save_dir)
+  num_violations_b = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,0.5, figure_dir)
   print("viol-0.5: ", num_violations_b)
-  num_violations_c = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,1.0, save_dir)
+  num_violations_c = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comparison_safety, x_0s_test, num_tests,1.0, figure_dir)
   print("viol-1.0: ", num_violations_c)
 
   return num_violations_c
 
-rnd_seed_list = [123]
-#rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+#rnd_seed_list = [123]
+rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 #rnd_seed_list = [345]
 # Episodic Learning Setup
 num_violations_list = []
@@ -665,15 +661,23 @@ num_episodes = 5
 num_tests = 10
 
 parent_path = "./experiments/segway_modular_gp/"
+model_path = "./model/segway_modular_gp/"
 
 if not os.path.isdir(parent_path):
     os.mkdir(parent_path)
 
+if not os.path.isdir(model_path):
+    os.mkdir(model_path)
+
 for rnd_seed in rnd_seed_list:
-  dirs = parent_path + str(rnd_seed) + "/"
-  if not os.path.isdir(dirs):
-      os.mkdir(dirs)
-  num_violations_c = run_experiment(rnd_seed, num_episodes, num_tests, dirs)
+  parent_dirs = parent_path + str(rnd_seed) + "/"
+  model_dirs = model_path + str(rnd_seed) + "/"
+  if not os.path.isdir(parent_dirs):
+      os.mkdir(parent_dirs)
+
+  if not os.path.isdir(model_dirs):    
+      os.mkdir(model_dirs)
+  num_violations_c = run_experiment(rnd_seed, num_episodes, num_tests, parent_dirs, model_dirs)
   num_violations_list.append(num_violations_c)
 
 print("num_violations_list: ", num_violations_list)

@@ -1,15 +1,10 @@
 from core.dynamics import AffineDynamics, ConfigurationDynamics, PDDynamics, ScalarDynamics
 from core.systems import Segway
 from core.controllers import FilterController,PDController
-from core.util import differentiate
-from matplotlib.pyplot import cla, clf, figure, grid, legend, plot, show, subplot, xlabel, ylabel
+from matplotlib.pyplot import cla, figure, grid, legend, plot, subplot, xlabel, ylabel
 import numpy as np
-from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
+from numpy import array, dot, identity, linspace, zeros
 from torch import Tensor as tarray
-from numpy.random import uniform,seed
-from numpy.random import permutation
-from numpy import clip
-from core.dynamics import LearnedAffineDynamics
 
 class SegwayOutput(ConfigurationDynamics):
     """

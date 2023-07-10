@@ -1,14 +1,7 @@
-from core.dynamics import AffineDynamics, ConfigurationDynamics, LearnedDynamics, PDDynamics, ScalarDynamics
-from core.systems import Segway
-from core.controllers import Controller, FBLinController, LQRController, FilterController,PDController, QPController, FilterControllerVar
 from core.util import differentiate
-from matplotlib.pyplot import cla, clf, figure, grid, legend, plot, savefig, show, subplot, title, xlabel, ylabel, fill_between
 import numpy as np
-from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
-from numpy.random import uniform,seed
-from numpy.random import permutation
-from numpy import clip
-import os
+from numpy import array, dot
+from numpy.random import uniform
 
 def downsample(drift_inputs, act_inputs, us, residuals, respreds, factor): 
     """

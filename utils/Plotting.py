@@ -1,9 +1,5 @@
-from matplotlib.pyplot import cla, clf, Circle, figure, grid, legend, plot, savefig, show, subplot, title, xlabel, ylabel, fill_between
+from matplotlib.pyplot import cla, Circle, figure, grid, legend, plot, show, subplot, title, xlabel, ylabel, fill_between, close
 import numpy as np
-from numpy import array, concatenate, dot, identity, linspace, ones, savetxt, size, sqrt, zeros
-from numpy.random import uniform,seed
-from numpy.random import permutation
-from numpy import clip
 from matplotlib import pyplot as plt
 
 def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
@@ -64,6 +60,8 @@ def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd
 
         f.savefig(savedir+"/ep{}_learned_ab_seed{}.pdf".format(str(i+2), str(rnd_seed)), bbox_inches='tight')
         f.savefig(savedir+"/ep{}_learned_ab_seed{}.png".format(str(i+2), str(rnd_seed)), bbox_inches='tight')
+
+        close()
 
 def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, savename):
     
@@ -152,6 +150,8 @@ def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp,
     legend(fontsize=16)
     
     f.savefig(savename, bbox_inches='tight')
+
+    close()
 
 def plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, theta_bound_u, theta_bound_l, savename):
     
@@ -244,6 +244,8 @@ def plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp,
     
     f.savefig(savename, bbox_inches='tight')
 
+    close()
+
 def plotLearnedCBF(ts_qp, hs_qp_trueest, hs_all, ts_post_qp, hs_post_qp, ebs, num_episodes, savename):
     f = figure(figsize=(10, 8))
     # # Initial Result
@@ -261,8 +263,9 @@ def plotLearnedCBF(ts_qp, hs_qp_trueest, hs_all, ts_post_qp, hs_post_qp, ebs, nu
     ylabel('$h$', fontsize=16)
     title('Learned Controller', fontsize = 24)
     legend(fontsize = 16)
-    show()
     f.savefig(savename, bbox_inches='tight')
+
+    close()
 
 def plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, xs_post_qp, ebs, num_episodes, savename):
     # LEARNED CONTROLLER
@@ -282,8 +285,9 @@ def plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, 
     ylabel('$\\dot{\\theta} (rad/s)$', fontsize=16)
     title('Learned Controller', fontsize = 24)
     legend(fontsize = 16)
-    show()
     f.savefig(savename, bbox_inches='tight')
+
+    close()
 
 def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, x_e, y_e, rad, savename, title_label='ProBF-GP'):
     ebs = int(len(state_data[0])/num_episodes)
@@ -309,6 +313,8 @@ def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_q
     plt.xlim([-3,3])
     plt.ylim([-1,2.5])
     f.savefig(savename, bbox_inches='tight') 
+
+    close()
     
 def plotTrainStates(input_data_list, ebs_res, num_episodes, savedir, rnd_seed):
     for i in range(num_episodes-1):
@@ -343,3 +349,5 @@ def plotTrainStates(input_data_list, ebs_res, num_episodes, savedir, rnd_seed):
         ylabel("u") 
       
         f.savefig(savedir+"ep{}_state_seed{}.pdf".format(str(i+2), str(rnd_seed)), bbox_inches='tight')
+
+        close()
