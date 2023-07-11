@@ -1,9 +1,12 @@
-from core.dynamics import AffineDynamics, ConfigurationDynamics, PDDynamics, ScalarDynamics
+from core.dynamics import AffineDynamics, ConfigurationDynamics, PDDynamics, ScalarDynamics, LearnedAffineDynamics
 from core.systems import Segway
-from core.controllers import FilterController,PDController
+from core.controllers import FilterController, PDController
+from core.util import differentiate
 from matplotlib.pyplot import cla, figure, grid, legend, plot, subplot, xlabel, ylabel
 import numpy as np
-from numpy import array, dot, identity, linspace, zeros
+from numpy import array, dot, identity, linspace, zeros, concatenate
+
+import torch
 from torch import Tensor as tarray
 
 class SegwayOutput(ConfigurationDynamics):
@@ -31,6 +34,169 @@ class SegwayPD(PDDynamics):
     
     def derivative(self, x, t):
         return x[2:4]
+    
+# Learned Segway Angle-Angle Rate Safety
+class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
+    """
+    Learned Segway Angle-Angle Rate Safety
+        Interface to use GP for residual dynamics
+    """
+    def __init__(self, segway_est, device):
+        """
+          Initialize with estimate of segway dynamics
+        """
+        self.dynamics = segway_est
+        self.residual_model = None
+        self.input_data = []
+        self.preprocess_mean = torch.zeros((8,))
+        self.preprocess_std = 1
+        self.residual_std = 1
+        self.residual_mean = 0
+        self.usstd = 1
+        self.device = device
+              
+    def process_drift(self, x, t):
+        dhdx = self.dynamics.dhdx( x, t )
+        return concatenate([x, dhdx])
+
+    def process_act(self, x, t):
+        dhdx = self.dynamics.dhdx( x, t )
+        return concatenate([x, dhdx])
+
+    def process_drift_torch(self, x_torch, t):
+        dhdx_torch = self.dynamics.dhdx_torch( x_torch, t )
+        return torch.cat([x_torch, dhdx_torch])
+
+    def process_act_torch(self, x_torch, t):
+        dhdx_torch = self.dynamics.dhdx_torch( x_torch, t )
+        return concatenate([x_torch, dhdx_torch])
+    
+    def eval(self, x, t):
+        return self.dynamics.eval(x, t)
+    
+    def drift_estimate(self, x, t):
+        return self.dynamics.drift(x, t)
+
+    def act_estimate(self, x, t):
+        return self.dynamics.act(x, t)
+
+    def drift_learned(self, x, t):
+        """
+          Find mean and variance of control-independent dynamics b after residual modeling.
+        """
+        xtorch = torch.from_numpy( x )
+        xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
+        xfull = torch.reshape(xfull, (-1, 9)).float().to(self.device)
+
+        cross1 = self.residual_model.k1(xfull, self.input_data_tensor)
+        cross1 = cross1.evaluate()
+        cross1 = cross1*(1/self.usstd)
+        cross2 = self.residual_model.k2(xfull, self.input_data_tensor)
+        cross2 = cross2.evaluate().float()
+        bmean = torch.matmul(cross2, self.alpha)
+        
+        mean = bmean*self.residual_std
+        variance = (self.residual_model.k2(xfull, xfull)).evaluate() - torch.matmul( torch.matmul(cross2, self.Kinv), cross2.T )
+        varab = -torch.matmul( torch.matmul(cross1, self.Kinv), cross2.T)
+        return [self.dynamics.drift(x, t) + mean.detach().cpu().numpy().ravel() + self.residual_mean + self.comparison_safety(self.eval(x, t)), variance.detach().cpu().numpy().ravel(), varab.detach().cpu().numpy().ravel()]
+    
+    def act_learned(self, x, t):
+        """
+          Find mean and variance of control-dependent dynamics a after residual modeling.
+        """
+        xtorch = torch.from_numpy( x )
+        xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
+        xfull = torch.reshape(xfull, (-1, 9)).float().to(self.device)
+
+        cross = self.residual_model.k1(xfull, self.input_data_tensor).evaluate()/self.usstd
+        mean = torch.matmul(cross, self.alpha)
+        variancequad = self.residual_model.k1(xfull, xfull).evaluate()/(self.usstd)**2 - torch.matmul( torch.matmul(cross, self.Kinv), cross.T)
+        return self.dynamics.act(x, t) + mean.detach().cpu().numpy().ravel(), variancequad.detach().cpu().numpy().ravel()
+    
+    def process_episode(self, xs, us, ts, window=3):
+        """
+            Data pre-processing step to generate plots
+        """
+        #------------------------- truncating data -----------------------#
+        # for tstart in range(len(us)):
+        #    if np.all(np.abs(np.array(us[tstart:]))<6e-3):
+        #      break
+        
+        tend = len(us)
+        endpoint = tend
+
+        half_window = (window - 1) // 2
+        xs = xs[:len(us)]
+        ts = ts[:len(us)]
+        
+        drift_inputs = array([self.process_drift(x, t) for x, t in zip(xs, ts)])
+        act_inputs = array([self.process_act(x, t) for x, t in zip(xs, ts)])
+
+        reps = array([self.dynamics.eval(x, t) for x, t in zip(xs, ts)])
+        rep_dots = differentiate(reps, ts)
+        rep_dot_noms = array([self.dynamics.eval_dot(x, u, t) for x, u, t in zip(xs, us, ts)])
+        
+        """
+        apreds = zeros(ts.size, )
+        bpreds = zeros(ts.size, )
+        apredsvar = zeros(ts.size, )
+        bpredsvar = zeros(ts.size, )
+        respreds = zeros(ts.size, )
+
+        j = 0
+        if self.residual_model is not None:
+          for x,u,t in zip(xs,us,ts):
+            meanb, varb, _ = self.drift_learned(x,t)
+            meana, vara = self.act_learned(x,t)
+            apreds[j] = meana - self.dynamics.act(x, t)
+            bpreds[j] = meanb - self.comparison_safety( self.eval(x,t) ) - self.dynamics.drift(x, t)
+            apredsvar[j] = vara
+            bpredsvar[j] = varb
+            respreds[j] = apreds[j]*u + bpreds[j]
+            j = j+1
+
+        apreds = apreds[half_window:-half_window]
+        apredsvar = apredsvar[half_window:-half_window]
+        bpreds = bpreds[half_window:-half_window]
+        respreds = respreds[half_window:-half_window]
+        bpredsvar = bpredsvar[half_window:-half_window]
+        """
+        
+        us = us[0:-2*half_window]
+        drift_inputs = drift_inputs[half_window:-half_window]
+        act_inputs = act_inputs[half_window:-half_window]
+        rep_dot_noms = rep_dot_noms[half_window:-half_window]
+        
+        #apreds = apreds[0:endpoint]
+        #apredsvar = apredsvar[0:endpoint]
+        #bpreds = bpreds[0:endpoint]
+        #bpredsvar = bpredsvar[0:endpoint]
+        #respreds = respreds[0:endpoint]
+        
+        us = us[0:endpoint]
+        drift_inputs = drift_inputs[0:endpoint]
+        act_inputs = act_inputs[0:endpoint]
+        rep_dot_noms = rep_dot_noms[0:endpoint]
+        rep_dots = rep_dots[0:endpoint]
+        
+        residuals = rep_dots - rep_dot_noms
+        
+        return drift_inputs, act_inputs, us, residuals, endpoint
+        #return drift_inputs, act_inputs, us, residuals, apreds, bpreds, apredsvar, bpredsvar, respreds, endpoint
+
+    def init_data(self, d_drift_in, d_act_in, m, d_out):
+        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0)]
+    
+    """
+    def actvar(self, x, t):
+        xfull = np.concatenate(([1],np.divide(self.process_act(x, t)-self.preprocess_mean,self.preprocess_std)))
+        cross = self.k1(xfull, self.input_data)
+        mean = np.dot(cross, self.alpha)*self.residual_std
+        variancequad = self.k1(xfull, xfull) - np.dot( np.dot( cross, self.Kinv ), cross)
+        variancequad = variancequad.cpu().numpy()
+        sigma1 = 0
+        return [self.dynamics.act(x, t) + mean, -sigma1*np.sqrt(variancequad)]
+    """ 
 
 def initializeSystem():
     # ## Segway Setup & FBLin/PD + PD Simulation

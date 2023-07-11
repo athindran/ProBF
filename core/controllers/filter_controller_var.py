@@ -8,6 +8,8 @@ import scipy
 
 from .controller import Controller
 
+from cvxpy.error import SolverError
+
 class FilterControllerVar(Controller):
     """Class for solving ProBF-QCQP using the convex relaxation."""
 
@@ -37,14 +39,14 @@ class FilterControllerVar(Controller):
         phi1, vara = self.phi_1( x, t )
 
         # Evaluate desired controller
-        uc = self.desired_controller.process( self.desired_controller.eval(x, t ) )
+        uc = self.desired_controller.process( self.desired_controller.eval( x, t ) )
         u = cp.Variable((3))
         
         # Construct the matrices of the convex program
         sigma = self.sigma
         delta = scipy.linalg.sqrtm(np.array([[vara[0], varab[0], 0],[varab[0], varb[0], 0],[0, 0, 0]]))
         cu = np.array([[0],[0],[1]])
-        prob = cp.Problem(cp.Minimize(cp.square(u[0])-2*u[0]*uc[0]),[phi1[0]*u[0]+phi0[0]-sigma*u[2]>=0,cp.norm(delta@u)<=cu.T@u,u[2]>=0,u[1]-1==0])
+        prob = cp.Problem(cp.Minimize(cp.square(u[0])-2*u[0]*uc[0]),[phi1[0]*u[0]+phi0[0]-sigma*u[2]>=0, cp.norm(delta@u)<=cu.T@u, u[2]>=0, u[1]-1==0])
     
         # Repeatedly solve the program with decreasing values of delta until success.
         try:

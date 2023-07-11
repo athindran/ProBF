@@ -3,7 +3,9 @@ import numpy as np
 from numpy import array, dot
 from numpy.random import uniform
 
-def downsample(drift_inputs, act_inputs, us, residuals, respreds, factor): 
+import torch
+
+def downsample(arraylist, factor): 
     """
         Downsample trajectory data for GP training.
 
@@ -12,14 +14,19 @@ def downsample(drift_inputs, act_inputs, us, residuals, respreds, factor):
             act_inputs: Feature corresponding to control-dependent dynamics
             us: Controls used to generate trajectory
             residuals: Residuals generated from simulation
-            respreds: Prediction of residuals from GP
         
         Outputs:
             Downsampled version of all inputs
     """
-    perm = range(len(residuals))
+    perm = range( len(arraylist[-1]) )
     perm = perm[0::factor]
-    return drift_inputs[perm], act_inputs[perm], us[perm], residuals[perm], respreds[perm]
+
+    out_arraylist = []
+
+    for array in arraylist:
+        out_arraylist.append( array[perm] )
+
+    return out_arraylist
 
 def generateInitialPoints(x_0, num_episodes, ic_prec):
   """

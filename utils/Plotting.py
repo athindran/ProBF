@@ -2,6 +2,9 @@ from matplotlib.pyplot import cla, Circle, figure, grid, legend, plot, show, sub
 import numpy as np
 from matplotlib import pyplot as plt
 
+import torch
+import gpytorch
+
 def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
                       residual_pred_lower_list, residual_pred_upper_list, residual_pred_compare_list, num_episodes, ebs, savedir, rnd_seed):
     for i in range(num_episodes-1):
@@ -285,6 +288,44 @@ def plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, 
     ylabel('$\\dot{\\theta} (rad/s)$', fontsize=16)
     title('Learned Controller', fontsize = 24)
     legend(fontsize = 16)
+    f.savefig(savename, bbox_inches='tight')
+
+    close()
+
+def plotPredictions(safety_learned, data_episode, savename, device='cpu'):
+    """
+    Plots the comparison of residual predictions and actual residuals.
+
+    Inputs:
+        safety_learned: Learned safety filter
+        data_episode: Trajectory data from each episode
+    """
+    residual_model = safety_learned.residual_model
+    likelihood = safety_learned.likelihood
+    
+    (drift_inputs, _, us, residuals, _) = data_episode
+    npoints = drift_inputs.shape[0]
+    test_inputs = (torch.from_numpy( drift_inputs ) - torch.reshape(safety_learned.preprocess_mean, (-1, 8)).repeat(npoints, 1) )
+    test_inputs = torch.divide(test_inputs, torch.reshape(safety_learned.preprocess_std, (-1, 8)).repeat(npoints, 1) )
+    test_inputs = torch.cat((torch.from_numpy(us/safety_learned.usstd), test_inputs), axis=1)
+    test_inputs = test_inputs.float().to(device)
+
+    residual_model.eval()
+    likelihood.eval()
+    with torch.no_grad(), gpytorch.settings.fast_computations(solves=False):
+        residual_pred = likelihood(safety_learned.residual_model(test_inputs))
+    lower, upper = residual_pred.confidence_region()
+    lower = lower.cpu()
+    upper = upper.cpu()
+    mean = residual_pred.mean.detach().cpu().numpy()
+    var = residual_pred.variance.detach().cpu().numpy()
+    f = figure()
+    plot(mean*safety_learned.residual_std + safety_learned.residual_mean)
+    fill_between(np.arange(mean.size), lower.detach().numpy(), upper.detach().numpy(), color='blue', alpha=0.2)
+    plot(residuals)
+    xlabel('Time')
+    ylabel('CBF residuals')
+    legend(["Prediction", "Actual"])
     f.savefig(savename, bbox_inches='tight')
 
     close()
