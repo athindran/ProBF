@@ -4,7 +4,7 @@ from core.controllers import Controller
 #from core.util import differentiate
 #import matplotlib
 from numpy import array, concatenate, linspace, ones, size, sqrt, zeros
-from numpy.random import seed
+from numpy.random import seed, permutation
 
 import tensorflow as tf
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
@@ -20,7 +20,7 @@ from utils.AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessE
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 from core.dynamics import LearnedAffineDynamics
-from core.learning.keras import KerasResidualAffineModel
+from core.learning import ResidualAffineModel
 from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Add, Dense, Dot, Input, Reshape, Lambda
 
@@ -48,7 +48,7 @@ class LearnedSegwaySafetyAAR_NN(LearnedAffineDynamics):
         return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0)]
 
 # Keras Residual Scalar Affine Model Definition
-class KerasResidualScalarAffineModel(KerasResidualAffineModel):
+class KerasResidualScalarAffineModel(ResidualAffineModel):
     def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_std, optimizer='sgd', loss='mean_absolute_error'):
         drift_model = Sequential()
         drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
@@ -77,10 +77,20 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
         self.input_std = None
 
     def eval_drift(self, drift_input):
-        return self.drift_model.predict(array([(drift_input-self.input_mean)/self.input_std]), verbose=0)[0][0]
+        prediction = self.drift_model(array([(drift_input-self.input_mean)/self.input_std]), training=False).numpy()
+        return prediction[0][0]
 
     def eval_act(self, act_input):
-        return self.act_model.predict(array([(act_input-self.input_mean)/self.input_std]), verbose=0)[0][0]/self.us_std
+        prediction = self.act_model(array([(act_input-self.input_mean)/self.input_std]), training=False).numpy()
+        return prediction[0][0]/self.us_std
+    
+    def shuffle(self, drift_inputs, act_inputs, us, residuals):
+        perm = permutation(len(residuals))
+        return drift_inputs[perm], act_inputs[perm], us[perm], residuals[perm]
+
+    def fit(self, drift_inputs, act_inputs, us, residuals, batch_size=1, num_epochs=1, validation_split=0):
+        drift_inputs, act_inputs, us, residuals = self.shuffle(drift_inputs, act_inputs, us, residuals)
+        self.model.fit([drift_inputs, act_inputs, us], residuals, batch_size=batch_size, epochs=num_epochs, validation_split=validation_split)
     
 # Combined Controller
 class CombinedController(Controller):
@@ -116,34 +126,35 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
   from core.controllers import FilterController
   # test for 10 different random points
   num_violations = 0
-  qp_estest_data, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
-  hs_qp_estest, drifts_qp_estest, acts_qp_estest, hdots_qp_estest = findSafetyData(safety_est, qp_estest_data, ts_qp)
-  hs_qp_truetrue, drifts_qp_truetrue, acts_qp_truetrue, hdots_qp_truetrue = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
-  hs_qp_trueest, drifts_qp_trueest, acts_qp_trueest, hdots_qp_trueest = findSafetyData(safety_true, qp_trueest_data, ts_qp)
+  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+  #hs_qp_estest, drifts_qp_estest, acts_qp_estest, hdots_qp_estest = findSafetyData(safety_est, qp_estest_data, ts_qp)
+  hs_qp_truetrue, _, _, _ = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
+  hs_qp_trueest, _, _, _ = findSafetyData(safety_true, qp_trueest_data, ts_qp)
 
-  xs_qp_estest, us_qp_estest = qp_estest_data
+  #xs_qp_estest, us_qp_estest = qp_estest_data
   xs_qp_trueest, us_qp_trueest = qp_trueest_data
   xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
-    
+
+  freq = 500 # Hz
+  tend = 3
+  ts_post_qp = linspace(0, tend, tend*freq + 1)
+
+  # Use Learned Controller
+  phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
+  phi_1_learned = lambda x, t: safety_learned.act( x, t )
+  flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
+
+  ebs = int(len(state_data[0])/num_episodes)
+  
   for i in range(num_tests):
-    # Learned Controller Simulation
-    # Use Learned Controller
-    phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
-    phi_1_learned = lambda x, t: safety_learned.act( x, t )
-    flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
-
-    freq = 500 # Hz
-    tend = 3
-
+    print("Test: ", i+1)
     x_0 = x_0s_test[i,:]
-    ts_post_qp = linspace(0, tend, tend*freq + 1)
-
     qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
     xs_post_qp, us_post_qp = qp_data_post
 
-    data_episode = safety_learned.process_episode(xs_post_qp, us_post_qp, ts_post_qp)
+    #data_episode = safety_learned.process_episode(xs_post_qp, us_post_qp, ts_post_qp)
     savename = save_dir+"residual_predict_seed{}_run{}.png".format(str(rnd_seed),str(i))
-    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, hdots_post_num = findLearnedSafetyData_nn(safety_learned, qp_data_post, ts_post_qp)
+    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_nn(safety_learned, qp_data_post, ts_post_qp)
    
     # check violation of safety
     if np.any(hs_post_qp < 0):
@@ -157,18 +168,15 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
 
     # Plotting
     savename = save_dir+"learned_controller_seed{}_run{}.png".format(str(rnd_seed),str(i))
-    plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, theta_bound_u, theta_bound_l, savename)
+    plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, 
+                    us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
+                      drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, 
+                      theta_bound_u, theta_bound_l, savename)
 
-    # h plotting
-    ebs = int(len(state_data[0])/num_episodes)
-
-    xs_baseline = xs_qp_trueest
-    xs_all = []
     hs_all = []
 
     for ep in range(num_episodes):
       xs_curr = state_data[0][ ep*ebs:(ep+1)*ebs ] 
-      xs_all.append( xs_curr )
       hs_curr = array([safety_learned.eval(x,t) for x, t in zip(xs_curr, ts_post_qp)])
       hs_all.append( hs_curr.ravel() )
 
@@ -177,7 +185,6 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
     plotLearnedCBF(ts_qp, hs_qp_trueest, np.array( hs_all ).ravel(), ts_post_qp, hs_post_qp, ebs, num_episodes, savename)
     
     # Phase Plane Plotting
-    
     epsilon=1e-6
     theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
     theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
@@ -196,7 +203,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests,save_dir):
   from core.controllers import FilterController
   seed(rnd_seed)
 
-  seg_est, seg_true, sego_est, sego_true, pd = initializeSystem()
+  seg_est, seg_true, _, _, pd = initializeSystem()
   safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(seg_est, seg_true, pd)
 
   alpha = 10
@@ -278,13 +285,14 @@ def run_experiment(rnd_seed, num_episodes, num_tests,save_dir):
     phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
     phi_1_learned = lambda x, t: safety_learned.act( x, t )
     flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
-    
+
+  data = None  
   num_violations = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir)
   return num_violations
 
 
-#rnd_seed_list = [123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
-rnd_seed_list = [123]
+rnd_seed_list = [123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+#rnd_seed_list = [123]
 # Episodic Learning Setup
 parent_path = "/scratch/gpfs/arkumar/ProBF/experiments/segway_modular_nn/"
 model_path = "/scratch/gpfs/arkumar/ProBF/model/segway_modular_nn/"
@@ -297,7 +305,7 @@ if not os.path.isdir(model_path):
 
 num_violations_list = []
 num_episodes = 5
-num_tests = 2
+num_tests = 10
 for rnd_seed in rnd_seed_list:
   dirs = parent_path + str(rnd_seed)+"/"
   if not os.path.isdir(dirs):

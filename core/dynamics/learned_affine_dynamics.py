@@ -8,11 +8,12 @@ class LearnedAffineDynamics(AffineDynamics):
         self.dynamics = affine_dynamics
         self.res_model = res_aff_model
 
-    def process_drift(self, x, t):
-        return concatenate([x, array([t])])
+    # To reduce confusion
+    #def process_drift(self, x, t):
+    #    return concatenate([x, array([t])])
 
-    def process_act(self, x, t):
-        return concatenate([x, array([t])])
+    #def process_act(self, x, t):
+    #    return concatenate([x, array([t])])
 
     def eval(self, x, t):
         return self.dynamics.eval(x, t)
