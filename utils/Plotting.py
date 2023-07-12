@@ -2,8 +2,6 @@ from matplotlib.pyplot import cla, Circle, figure, grid, legend, plot, show, sub
 import numpy as np
 from matplotlib import pyplot as plt
 
-import torch
-import gpytorch
 
 def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
                       residual_pred_lower_list, residual_pred_upper_list, residual_pred_compare_list, num_episodes, ebs, savedir, rnd_seed):
@@ -300,6 +298,9 @@ def plotPredictions(safety_learned, data_episode, savename, device='cpu'):
         safety_learned: Learned safety filter
         data_episode: Trajectory data from each episode
     """
+    import torch
+    import gpytorch
+    
     residual_model = safety_learned.residual_model
     likelihood = safety_learned.likelihood
     

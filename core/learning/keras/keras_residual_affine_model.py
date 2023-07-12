@@ -45,11 +45,4 @@ class KerasResidualAffineModel(ResidualAffineModel):
 
     def fit(self, drift_inputs, act_inputs, us, residuals, batch_size=1, num_epochs=1, validation_split=0):
         drift_inputs, act_inputs, us, residuals = self.shuffle(drift_inputs, act_inputs, us, residuals)
-        print(drift_inputs.shape)
-        print(act_inputs.shape)
-        print(us.shape)
-        print(residuals.shape)
-        #act_residuals = self.act_model(act_inputs)
-        #drift_residuals = self.drift_model(act_inputs)
-        #print(act_residuals.shape, drift_residuals.shape)
         self.model.fit([drift_inputs, act_inputs, us], residuals, batch_size=batch_size, epochs=num_epochs, validation_split=validation_split)

@@ -6,9 +6,6 @@ from matplotlib.pyplot import cla, figure, grid, legend, plot, subplot, xlabel, 
 import numpy as np
 from numpy import array, dot, identity, linspace, zeros, concatenate
 
-import torch
-from torch import Tensor as tarray
-
 class SegwayOutput(ConfigurationDynamics):
     """
       Class to represent observable output which is the first two dimensions for Segway
@@ -41,10 +38,14 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
     Learned Segway Angle-Angle Rate Safety
         Interface to use GP for residual dynamics
     """
+
     def __init__(self, segway_est, device):
         """
           Initialize with estimate of segway dynamics
         """
+        import torch
+        from torch import Tensor as tarray
+        
         self.dynamics = segway_est
         self.residual_model = None
         self.input_data = []
@@ -64,10 +65,14 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         return concatenate([x, dhdx])
 
     def process_drift_torch(self, x_torch, t):
+        import torch
+        from torch import Tensor as tarray
         dhdx_torch = self.dynamics.dhdx_torch( x_torch, t )
         return torch.cat([x_torch, dhdx_torch])
 
     def process_act_torch(self, x_torch, t):
+        import torch
+        from torch import Tensor as tarray
         dhdx_torch = self.dynamics.dhdx_torch( x_torch, t )
         return concatenate([x_torch, dhdx_torch])
     
@@ -84,6 +89,8 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         """
           Find mean and variance of control-independent dynamics b after residual modeling.
         """
+        import torch
+        from torch import Tensor as tarray
         xtorch = torch.from_numpy( x )
         xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
         xfull = torch.reshape(xfull, (-1, 9)).float().to(self.device)
@@ -104,6 +111,8 @@ class LearnedSegwaySafetyAAR(LearnedAffineDynamics):
         """
           Find mean and variance of control-dependent dynamics a after residual modeling.
         """
+        import torch
+        from torch import Tensor as tarray
         xtorch = torch.from_numpy( x )
         xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
         xfull = torch.reshape(xfull, (-1, 9)).float().to(self.device)
@@ -404,6 +413,7 @@ class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
         """
           Derivative of CBF wrt state in torch
         """
+        from torch import Tensor as tarray
         theta = x[1]
         theta_dot = x[3]
         return tarray( [ 0, - ( theta - self.theta_e ), 0, - self.coeff * theta_dot ] )

@@ -13,7 +13,8 @@ from utils.SegwaySupport import initializeSystem, initializeSafetyFilter, simula
 from utils.AuxFunc import findSafetyData, findLearnedSafetyData_gp, downsample, standardize, generateInitialPoints
 from utils.Plotting import plotTestStates, plotPhasePlane, plotLearnedCBF, plotPredictions
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 print("Device", device)
 
 class ExactGPModel(gpytorch.models.ExactGP):
@@ -390,16 +391,17 @@ def run_experiment(rnd_seed, num_episodes, num_tests, figure_dir, model_dir):
 
   return num_violations_c
 
-rnd_seed_list = [123]
-#rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+
+#rnd_seed_list = [123]
+rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 #rnd_seed_list = [345]
 # Episodic Learning Setup
 num_violations_list = []
 num_episodes = 5
 num_tests = 10
 
-parent_path = "./experiments/segway_modular_gp/"
-model_path = "./model/segway_modular_gp/"
+parent_path = "/scratch/gpfs/arkumar/ProBF/experiments/segway_modular_gp/"
+model_path = "/scratch/gpfs/arkumar/ProBF/model/segway_modular_gp/"
 
 if not os.path.isdir(parent_path):
     os.mkdir(parent_path)

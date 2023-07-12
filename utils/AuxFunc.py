@@ -3,7 +3,7 @@ import numpy as np
 from numpy import array, dot
 from numpy.random import uniform
 
-import torch
+#import torch
 
 def downsample(arraylist, factor): 
     """
