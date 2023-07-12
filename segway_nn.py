@@ -77,12 +77,10 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
         self.input_std = None
 
     def eval_drift(self, drift_input):
-        #print(drift_input,self.input_mean,self.input_std)
-        #print(array([(drift_input-self.input_mean)/self.input_std]))
-        return self.drift_model.predict(array([(drift_input-self.input_mean)/self.input_std]))[0][0]
+        return self.drift_model.predict(array([(drift_input-self.input_mean)/self.input_std]), verbose=0)[0][0]
 
     def eval_act(self, act_input):
-        return self.act_model.predict(array([(act_input-self.input_mean)/self.input_std]))[0][0]/self.us_std
+        return self.act_model.predict(array([(act_input-self.input_mean)/self.input_std]), verbose=0)[0][0]/self.us_std
     
 # Combined Controller
 class CombinedController(Controller):
@@ -299,9 +297,9 @@ if not os.path.isdir(model_path):
 
 num_violations_list = []
 num_episodes = 5
-num_tests = 10
+num_tests = 2
 for rnd_seed in rnd_seed_list:
-  dirs = "./experiments/segway_modular_nn/"+str(rnd_seed)+"/"
+  dirs = parent_path + str(rnd_seed)+"/"
   if not os.path.isdir(dirs):
       os.mkdir(dirs)  
   num_violations = run_experiment(rnd_seed, num_episodes, num_tests, dirs)

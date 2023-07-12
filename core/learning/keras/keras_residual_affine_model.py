@@ -34,10 +34,10 @@ class KerasResidualAffineModel(ResidualAffineModel):
         self.model = model
 
     def eval_drift(self, drift_input):
-        return self.drift_model.predict(array([drift_input]))[0]
+        return self.drift_model.predict(array([drift_input]), verbose=0)[0]
 
     def eval_act(self, act_input):
-        return self.act_model.predict(array([act_input]))[0]
+        return self.act_model.predict(array([act_input]), verbose=0)[0]
 
     def shuffle(self, drift_inputs, act_inputs, us, residuals):
         perm = permutation(len(residuals))
