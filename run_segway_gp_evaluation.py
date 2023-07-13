@@ -1,6 +1,8 @@
 import os
 import time
 import numpy as np
+import sys
+import pickle
 from numpy import array, linspace, ones, size, sqrt, zeros
 from numpy.random import seed
 
@@ -13,6 +15,8 @@ from src.segway.torch.utils import initializeSystem, initializeSafetyFilter, sim
 from src.segway.torch.handlers import LearnedSegwaySafetyAAR_gpytorch, ExactGPModel, CombinedController
 from src.segway.aux_utils import findSafetyData, findLearnedSafetyData_gp, downsample, standardize, generateInitialPoints
 from src.plotting.plotting import plotTestStates, plotPhasePlane, plotLearnedCBF, plotPredictions
+
+from utils.print_logger import PrintLogger
 
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
@@ -51,9 +55,9 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       plot(theta_h0_vals, -theta_dot_h0_vals, 'k', linewidth=1.5)
       # Initial Result
       plot(xs_qp_trueest[:, 1], xs_qp_trueest[:, 3], 'g', linewidth=1.5, label='Nominal model')
-      savename = figure_dir + "/learned_pp_seed{}_run{}.png".format(str(rnd_seed), str(i))
+      savename = figure_dir + "/learned_pp_run{}.png".format(str(i))
 
-      for z_index, sigma in enumerate([0, 0.5, 1.0, 2.0]):
+      for z_index, sigma in enumerate([0, 0.5, 1.0, 1.5]):
         x_0 = x_0s_test[i, :]
         flt_learned = FilterControllerVar( seg_est, phi_0_learned, phi_1_learned, pd, sigma)
         qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
@@ -61,6 +65,8 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
         
         # Final Result
         plot(xs_post_qp[:, 1], xs_post_qp[:, 3], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(sigma), alpha=(z_index+1)/4)
+
+        pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}_sigma{}.pkl".format(str(i), str(sigma)) , 'wb') )  
       
       # Create a Rectangle patch
       rect = patches.Rectangle((0.15, 0.075), 0.1, 0.025, linewidth=1, edgecolor='k', facecolor='b', alpha=0.3)
@@ -283,8 +289,9 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
           residual_pred_lower_list.append( lower )
           residual_pred_upper_list.append( upper )
       """
+      
       # Prepare data for GP fitting
-      downsample_rate = 5
+      downsample_rate = 10
 
       # Inputs for drift terms predictions and actuator term predictions are the same so we omit and use one input.
       drift_inputs, _, us, residuals = downsample([drift_inputs_long, act_inputs_long, us_long, residuals_long], downsample_rate)
@@ -303,7 +310,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
       #residuals = residuals + 0.01*np.random.randn(residuals.size, )
       if i > 0:
           ustd_list.append(us_scale)
-
+      
       likelihood = gpytorch.likelihoods.GaussianLikelihood()
       likelihood.noise = 0.01
       input_data_tensor = torch.from_numpy(input_data).float().to(device)
@@ -327,9 +334,9 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
           # load random initialization
           state_dict = torch.load(model_dir + "residual_model_iter_{}.pth".format(str(0)))
           residual_model.load_state_dict(state_dict)
-          adam_lr = 0.01
-          training_iter = 300
-    
+          adam_lr = 0.02
+          training_iter = 200
+      
       # load to gpu if possible
       if device!='cpu':
         input_data_tensor = input_data_tensor.to( device )
@@ -351,7 +358,6 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
       # "Loss" for GPs - the marginal log likelihood
       mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, residual_model)
 
-
       # print hyperparams before training
       print("kernel lengthscale for a(x)",residual_model.covar_module.kernels[0].kernels[1].base_kernel.lengthscale)
       print("kernel scale for a(x)",residual_model.covar_module.kernels[0].kernels[1].outputscale.item())
@@ -360,7 +366,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
       print("kernel scale for b(x)",residual_model.covar_module.kernels[1].outputscale.item())
       
       with gpytorch.settings.max_cg_iterations(3000), gpytorch.settings.cholesky_jitter(1e-4):
-          for j in range(training_iter):
+        for j in range(training_iter):
               # Zero gradients from previous iteration
               optimizer.zero_grad()
               # Output from model
@@ -385,7 +391,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
       print("kernel scale for b(x)", residual_model.covar_module.kernels[1].outputscale.item())
       # save the current gp model with hyperparams
       torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(i+1)))
-
+      
       safety_learned = LearnedSegwaySafetyAAR_gpytorch( safety_est, device=device)
       
       safety_learned.residual_model = residual_model
@@ -404,49 +410,58 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
       phi_0_learned = safety_learned.drift_learned 
       phi_1_learned = safety_learned.act_learned
       flt_learned = FilterControllerVar( seg_est, phi_0_learned, phi_1_learned, pd, sigma=0.0)
-
+      
   print(residual_model.covar_module.kernels[0].kernels[1].outputscale)
   print(residual_model.covar_module.kernels[1].outputscale)
   print(residual_model.covar_module.kernels[0].kernels[1].base_kernel.lengthscale)
   print(residual_model.covar_module.kernels[1].base_kernel.lengthscale)
   
   num_violations_c = 0
-  
   if run_quant_evaluation:
-    figure_dir = figure_dir + "quant/" 
-    if not os.path.isdir(figure_dir):
-      os.mkdir(figure_dir)
-    num_violations_a = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
-                                           safety_learned, safety_est, safety_true, 
-                                           x_0s_test, num_tests, 0, figure_dir)
-    print("viol-0: ", num_violations_a)
-    num_violations_b = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
-                                           safety_learned, safety_est, safety_true, 
-                                           x_0s_test, num_tests, 0.5, figure_dir)
-    print("viol-0.5: ", num_violations_b)
+    figure_quant_dir = figure_dir + "quant/" 
+    if not os.path.isdir(figure_quant_dir):
+      os.mkdir(figure_quant_dir)
+    
+    #num_violations_a = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
+    #                                       safety_learned, safety_est, safety_true, 
+    #                                       x_0s_test, num_tests, 0, figure_dir)
+    #print("viol-0: ", num_violations_a)
+    #num_violations_b = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
+    #                                       safety_learned, safety_est, safety_true, 
+    #                                       x_0s_test, num_tests, 0.5, figure_dir)
+    #print("viol-0.5: ", num_violations_b)
+    
     num_violations_c = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
                                            safety_learned, safety_est, safety_true, 
-                                           x_0s_test, num_tests, 1.0, figure_dir)
+                                           x_0s_test, num_tests, 1.0, figure_quant_dir)
     print("viol-1.0: ", num_violations_c)
   
   if run_qual_evaluation:
-    figure_dir = figure_dir + "qual/" 
-    if not os.path.isdir(figure_dir):
-      os.mkdir(figure_dir)
-    run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, safety_true, figure_dir)
-    
+    figure_qual_dir = figure_dir + "qual/" 
+    if not os.path.isdir(figure_qual_dir):
+      os.mkdir(figure_qual_dir)
+    run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, safety_true, figure_qual_dir)
   return num_violations_c
 
 
-rnd_seed_list = [123, 234]
-#rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
-#rnd_seed_list = [345]
+#rnd_seed_list = [123]
+rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 # Episodic Learning Setup
 num_violations_list = []
 num_episodes = 5
 
-figure_path = "/scratch/gpfs/arkumar/ProBF/exps/segway_modular_gp/"
-model_path = "/scratch/gpfs/arkumar/ProBF/models/segway_modular_gp/"
+experiment_name = "runall_quant"
+
+parent_path = "/scratch/gpfs/arkumar/ProBF/"
+parent_path = os.path.join(parent_path, experiment_name)
+
+if not os.path.isdir(parent_path):
+    os.mkdir(parent_path)
+    os.mkdir( os.path.join(parent_path, "exps") )
+    os.mkdir( os.path.join(parent_path, "models") )
+
+figure_path = os.path.join(parent_path, "exps/segway_modular_gp/")
+model_path = os.path.join(parent_path, "models/segway_modular_gp/")
 
 if not os.path.isdir(figure_path):
     os.mkdir(figure_path)
@@ -462,6 +477,10 @@ for rnd_seed in rnd_seed_list:
 
   if not os.path.isdir(model_dirs):    
       os.mkdir(model_dirs)
+
+  sys.stdout = PrintLogger(os.path.join(figure_dirs, 'log.txt'))
+  sys.stderr = PrintLogger(os.path.join(figure_dirs, 'log.txt')) 
+
   num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, run_quant_evaluation=True, run_qual_evaluation=True)
   num_violations_list.append(num_violations_c)
 
