@@ -1,6 +1,5 @@
 #from core.dynamics import AffineDynamics, ConfigurationDynamics, LearnedDynamics, PDDynamics, ScalarDynamics
 #from core.systems import Segway
-from core.controllers import Controller
 from numpy import array, linspace, ones, size, sqrt, zeros
 from numpy.random import seed
 
@@ -10,6 +9,8 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import numpy as np
 import os
 import time
+import sys
+import pickle
 #from tensorflow.python.client import device_lib
 
 from src.segway.keras.utils import initializeSystem, initializeSafetyFilter, simulateSafetyFilter
@@ -17,10 +18,74 @@ from src.segway.keras.handlers import LearnedSegwaySafetyAAR_NN, KerasResidualSc
 from src.plotting.plotting import plotTestStates, plotPhasePlane, plotLearnedCBF
 from src.segway.aux_utils import findSafetyData, findLearnedSafetyData_nn, generateInitialPoints
 
+from utils.print_logger import PrintLogger
+
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.pyplot import grid, legend, plot, title, xlabel, ylabel
+
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 
-def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir):                       
+def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, comp_safety,
+                        safety_true, figure_dir="./"):
+    from core.controllers import FilterController
+    # Phase Plane Plotting
+    # Use Learned Controller
+    phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
+    phi_1_learned = lambda x, t: safety_learned.act( x, t )
+    flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
+
+    _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+
+    freq = 500 # Hz 
+    tend = 3
+    ts_post_qp = linspace(0, tend, tend*freq + 1)
+
+    xs_qp_trueest, _ = qp_trueest_data
+    
+    x_0s_test = np.zeros((2, 4))
+    x_0s_test[0, :] = array([0, 0.2, 0.2, 0.1])
+    x_0s_test[1, :] = array([0, 0.22, 0.2, 0.09])
+    
+    for i in range(2):
+      fig = plt.figure(figsize=(6, 4))
+      ax = plt.gca()
+      # Safe Set
+      epsilon = 1e-6
+      theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
+      theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
+  
+      plot(theta_h0_vals, theta_dot_h0_vals, 'k', linewidth=2.0, label='$\partial S$')
+      plot(theta_h0_vals, -theta_dot_h0_vals, 'k', linewidth=1.5)
+      # Initial Result
+      plot(xs_qp_trueest[:, 1], xs_qp_trueest[:, 3], 'g', linewidth=1.5, label='Nominal model')
+      savename = figure_dir + "/learned_pp_run{}.png".format(str(i))
+      
+      x_0 = x_0s_test[i, :]
+      flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd)
+      qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
+      xs_post_qp, _ = qp_data_post 
+
+      pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}.pkl".format(str(i)) , 'wb') )  
+        
+      # Final Result
+      plot(xs_post_qp[:, 1], xs_post_qp[:, 3], 'b', linewidth=1.5, label='LCBF-NN')
+      
+      # Create a Rectangle patch
+      rect = patches.Rectangle((0.15, 0.075), 0.1, 0.025, linewidth=1, edgecolor='k', facecolor='b', alpha=0.3)
+
+      # Add the patch to the Axes
+      ax.add_patch(rect)
+
+      xlabel('$\\theta (rad)$', fontsize=8)
+      ylabel('$\\dot{\\theta} (rad/s)$', fontsize=8)
+      title('Segway Safety', fontsize = 8)
+      legend(fontsize = 8)
+      fig.savefig(savename, bbox_inches='tight')
+
+
+def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir):                       
   from core.controllers import FilterController
   # test for 10 different random points
   num_violations = 0
@@ -97,7 +162,7 @@ def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, s
 
 ########################run function##########################################
 
-def run_experiment(rnd_seed, num_episodes, num_tests,save_dir):
+def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quant_evaluation=False, run_qual_evaluation=False):
   from core.controllers import FilterController
   seed(rnd_seed)
 
@@ -185,18 +250,34 @@ def run_experiment(rnd_seed, num_episodes, num_tests,save_dir):
     flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
 
   data = None  
-  num_violations = evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir)
+  num_violations = 0
+  if run_quant_evaluation:
+    figure_quant_dir = save_dir + "quant/" 
+    if not os.path.isdir(figure_quant_dir):
+      os.mkdir(figure_quant_dir)
+
+    num_violations = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
+                                       safety_learned, safety_est, safety_true, comp_safety, 
+                                       x_0s_test, num_tests, figure_quant_dir)
+  if run_qual_evaluation:
+    figure_qual_dir = save_dir + "qual/" 
+    if not os.path.isdir(figure_qual_dir):
+      os.mkdir(figure_qual_dir)
+
+    run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, comp_safety,
+                        safety_true, figure_qual_dir)  
   return num_violations
 
 
 rnd_seed_list = [123]
-#rnd_seed_list = [123]
+#rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 # Episodic Learning Setup
-parent_path = "/scratch/gpfs/arkumar/ProBF/experiments/segway_modular_nn/"
-model_path = "/scratch/gpfs/arkumar/ProBF/model/segway_modular_nn/"
 
-if not os.path.isdir(parent_path):
-    os.mkdir(parent_path)
+figure_path = "/scratch/gpfs/arkumar/ProBF/exps/segway_modular_nn/"
+model_path = "/scratch/gpfs/arkumar/ProBF/models/segway_modular_nn/"
+
+if not os.path.isdir(figure_path):
+    os.mkdir(figure_path)
 
 if not os.path.isdir(model_path):
     os.mkdir(model_path)
@@ -205,10 +286,15 @@ num_violations_list = []
 num_episodes = 5
 num_tests = 10
 for rnd_seed in rnd_seed_list:
-  dirs = parent_path + str(rnd_seed)+"/"
+  dirs = figure_path + str(rnd_seed) + "/"
+
   if not os.path.isdir(dirs):
-      os.mkdir(dirs)  
-  num_violations = run_experiment(rnd_seed, num_episodes, num_tests, dirs)
+      os.mkdir(dirs) 
+  
+  sys.stdout = PrintLogger(os.path.join(dirs, 'log.txt'))
+  sys.stderr = PrintLogger(os.path.join(dirs, 'log.txt')) 
+  
+  num_violations = run_segway_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=False, run_qual_evaluation=True)
   num_violations_list.append(num_violations)
 
 print("num_violations_list: ", num_violations_list)
