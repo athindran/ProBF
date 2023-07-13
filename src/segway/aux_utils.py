@@ -1,9 +1,8 @@
 from core.util import differentiate
+
 import numpy as np
 from numpy import array, dot
 from numpy.random import uniform
-
-#import torch
 
 def downsample(arraylist, factor): 
     """
@@ -213,3 +212,4 @@ def postProcessEpisode(xs_curr, us, ts_qp, safety_est, safety_true, safety_learn
     
     res_expected = res_expected[0:endpoint]
     return drift_est,drift_true,drift_learned,act_est,act_true,act_learned, drift_var, act_var, res_expected
+
