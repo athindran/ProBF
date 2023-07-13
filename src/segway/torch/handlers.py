@@ -106,10 +106,10 @@ class ExactGPModel(gpytorch.models.ExactGP):
         ku = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel(active_dims=active_dimsu))
 
         active_dimsv = np.array([1, 2, 3, 4, 6, 8])
-        ka = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
+        ka = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(active_dims=active_dimsv, ard_num_dims=6))
         self.k1 = ku*ka
 
-        kb = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
+        kb = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(active_dims=active_dimsv, ard_num_dims=6))
         self.k2 = kb
         self.covar_module = self.k1 + self.k2
 
