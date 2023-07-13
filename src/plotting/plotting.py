@@ -308,7 +308,7 @@ def plotPredictions(safety_learned, data_episode, savename, device='cpu'):
     npoints = drift_inputs.shape[0]
     test_inputs = (torch.from_numpy( drift_inputs ) - torch.reshape(safety_learned.preprocess_mean, (-1, 8)).repeat(npoints, 1) )
     test_inputs = torch.divide(test_inputs, torch.reshape(safety_learned.preprocess_std, (-1, 8)).repeat(npoints, 1) )
-    test_inputs = torch.cat((torch.from_numpy(us/safety_learned.usstd), test_inputs), axis=1)
+    test_inputs = torch.cat((torch.from_numpy(us/safety_learned.us_scale), test_inputs), axis=1)
     test_inputs = test_inputs.float().to(device)
 
     residual_model.eval()

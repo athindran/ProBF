@@ -63,7 +63,7 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
         plot(xs_post_qp[:, 1], xs_post_qp[:, 3], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(sigma), alpha=(z_index+1)/4)
       
       # Create a Rectangle patch
-      rect = patches.Rectangle((50, 100), 40, 30, linewidth=1, edgecolor='k', facecolor='b', alpha=0.5)
+      rect = patches.Rectangle((0.15, 0.075), 0.1, 0.025, linewidth=1, edgecolor='k', facecolor='b', alpha=0.3)
 
       # Add the patch to the Axes
       ax.add_patch(rect)
@@ -438,12 +438,12 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, run_qu
   return num_violations_c
 
 
-rnd_seed_list = [123]
+rnd_seed_list = [123, 234]
 #rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 #rnd_seed_list = [345]
 # Episodic Learning Setup
 num_violations_list = []
-num_episodes = 1
+num_episodes = 5
 
 figure_path = "/scratch/gpfs/arkumar/ProBF/exps/segway_modular_gp/"
 model_path = "/scratch/gpfs/arkumar/ProBF/models/segway_modular_gp/"
@@ -462,7 +462,7 @@ for rnd_seed in rnd_seed_list:
 
   if not os.path.isdir(model_dirs):    
       os.mkdir(model_dirs)
-  num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, run_quant_evaluation=False, run_qual_evaluation=True)
+  num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, run_quant_evaluation=True, run_qual_evaluation=True)
   num_violations_list.append(num_violations_c)
 
 print("num_violations_list: ", num_violations_list)
