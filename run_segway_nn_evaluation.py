@@ -1,10 +1,8 @@
 #from core.dynamics import AffineDynamics, ConfigurationDynamics, LearnedDynamics, PDDynamics, ScalarDynamics
 #from core.systems import Segway
 from core.controllers import Controller
-#from core.util import differentiate
-#import matplotlib
-from numpy import array, concatenate, linspace, ones, size, sqrt, zeros
-from numpy.random import seed, permutation
+from numpy import array, linspace, ones, size, sqrt, zeros
+from numpy.random import seed
 
 import tensorflow as tf
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
@@ -14,112 +12,12 @@ import os
 import time
 #from tensorflow.python.client import device_lib
 
-from utils.SegwaySupport import initializeSystem, initializeSafetyFilter, simulateSafetyFilter, SafetyAngleAngleRate
-from utils.Plotting import plotTestStates, plotTrainStates, plotTrainMetaData, plotPhasePlane, plotLearnedCBF
-from utils.AuxFunc import findSafetyData, findLearnedSafetyData_nn, postProcessEpisode, generateInitialPoints
+from src.segway.keras.utils import initializeSystem, initializeSafetyFilter, simulateSafetyFilter
+from src.segway.keras.handlers import LearnedSegwaySafetyAAR_NN, KerasResidualScalarAffineModel, CombinedController
+from src.plotting.plotting import plotTestStates, plotPhasePlane, plotLearnedCBF
+from src.segway.aux_utils import findSafetyData, findLearnedSafetyData_nn, generateInitialPoints
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-from core.dynamics import LearnedAffineDynamics
-from core.learning import ResidualAffineModel
-from tensorflow.keras import Model, Sequential
-from tensorflow.keras.layers import Add, Dense, Dot, Input, Reshape, Lambda
-
-class LearnedSegwaySafetyAAR_NN(LearnedAffineDynamics):
-    """
-    Class to setup the CBF and derivatives
-    """
-    def __init__(self, segway_safety_aar, scalar_res_aff_model):
-        self.dynamics = segway_safety_aar
-        self.res_model = scalar_res_aff_model
-              
-    def process_drift(self, x, t):
-        
-        dhdx = self.dynamics.dhdx( x, t )
-        
-        return concatenate([x, dhdx])
-
-    def process_act(self, x, t):
-        
-        dhdx = self.dynamics.dhdx( x, t )
-        
-        return concatenate([x, dhdx])     
-    
-    def init_data(self, d_drift_in, d_act_in, m, d_out):
-        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0)]
-
-# Keras Residual Scalar Affine Model Definition
-class KerasResidualScalarAffineModel(ResidualAffineModel):
-    def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_std, optimizer='sgd', loss='mean_absolute_error'):
-        drift_model = Sequential()
-        drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
-        drift_model.add(Dense(d_out))
-        self.drift_model = drift_model
-        self.us_std = us_std
-
-        drift_inputs = Input((d_drift_in,))
-        drift_residuals = self.drift_model(drift_inputs)
-
-        act_model = Sequential()
-        act_model.add(Dense(d_hidden, input_shape=(d_act_in,), activation='relu'))
-        act_model.add(Dense(d_out * m))
-        act_model.add(Reshape((d_out, m)))
-        self.act_model = act_model
-
-        act_inputs = Input((d_act_in,))
-        act_residuals = self.act_model(act_inputs)
-
-        us = Input((m,))
-        residuals = Add()([drift_residuals, Dot([2, 1])([act_residuals, Lambda(lambda x: x/self.us_std)(us) ])])
-        model = Model([drift_inputs, act_inputs, us], residuals)
-        model.compile(optimizer, loss)
-        self.model = model
-        self.input_mean = None
-        self.input_std = None
-
-    def eval_drift(self, drift_input):
-        prediction = self.drift_model(array([(drift_input-self.input_mean)/self.input_std]), training=False).numpy()
-        return prediction[0][0]
-
-    def eval_act(self, act_input):
-        prediction = self.act_model(array([(act_input-self.input_mean)/self.input_std]), training=False).numpy()
-        return prediction[0][0]/self.us_std
-    
-    def shuffle(self, drift_inputs, act_inputs, us, residuals):
-        perm = permutation(len(residuals))
-        return drift_inputs[perm], act_inputs[perm], us[perm], residuals[perm]
-
-    def fit(self, drift_inputs, act_inputs, us, residuals, batch_size=1, num_epochs=1, validation_split=0):
-        drift_inputs, act_inputs, us, residuals = self.shuffle(drift_inputs, act_inputs, us, residuals)
-        self.model.fit([drift_inputs, act_inputs, us], residuals, batch_size=batch_size, epochs=num_epochs, validation_split=validation_split)
-    
-# Combined Controller
-class CombinedController(Controller):
-    def __init__(self, controller_1, controller_2, weights):
-        self.controller_1 = controller_1
-        self.controller_2 = controller_2
-        self.weights = weights
-        
-    def eval(self, x, t):
-        u_1 = self.controller_1.process( self.controller_1.eval( x, t ) )
-        u_2 = self.controller_2.process( self.controller_2.eval( x, t ) )
-        return self.weights[ 0 ] * u_1 + self.weights[ 1 ] * u_2
-
-def standardize(data_train):
-    """
-    Standardize a dataset to have zero mean and unit standard deviation.
-    :param data_train: 2-D Numpy array. Training data.
-    :param data_test: 2-D Numpy array. Test data.
-    :return: (train_set, test_set, mean, std), The standardized dataset and
-      their mean and standard deviation before processing.
-    """
-    std = np.std(data_train, 0, keepdims=True)
-    std[std == 0] = 1
-    mean = np.mean(data_train, 0, keepdims=True)
-    data_train_standardized = (data_train - mean) / std
-    output = [data_train_standardized]
-    output.append(mean)
-    output.append(std)
-    return output 
 
 
 def evaluateTrainedModel(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir):                       
@@ -291,7 +189,7 @@ def run_experiment(rnd_seed, num_episodes, num_tests,save_dir):
   return num_violations
 
 
-rnd_seed_list = [123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+rnd_seed_list = [123]
 #rnd_seed_list = [123]
 # Episodic Learning Setup
 parent_path = "/scratch/gpfs/arkumar/ProBF/experiments/segway_modular_nn/"
