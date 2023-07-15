@@ -11,7 +11,7 @@ from .controller import Controller
 class FilterControllerVar2(Controller):
     """Class for solving the ProBF-QCQP with two controller inputs."""
 
-    def __init__(self, affine_dynamics, phi_0, phi_1, desired_controller, sigma = 2.0):
+    def __init__(self, affine_dynamics, phi_0, desired_controller, sigma = 2.0):
         """Create an FBLinController object.
 
         Policy is u = (act)^-1 * (-drift + aux), where drift and act are
@@ -27,7 +27,6 @@ class FilterControllerVar2(Controller):
         Controller.__init__(self, affine_dynamics)
         self.affine_dynamics = affine_dynamics
         self.phi_0 = phi_0
-        self.phi_1 = phi_1
         self.desired_controller = desired_controller
         self.sigma = sigma
         
@@ -35,7 +34,7 @@ class FilterControllerVar2(Controller):
         num = - phi0 - dot( phi1, uc )
         den = dot(phi1, phi1 .T)
         if den!=0:
-            lambda_star = maximum( 0 , num / den )
+            lambda_star = maximum( 0 , num / (den + 1e-4) )
         else:
             lambda_star = 0
             
@@ -45,8 +44,7 @@ class FilterControllerVar2(Controller):
         #print("Evaluating")
         
         # Evaluate mean and variance
-        phi0, varb, varab = self.phi_0( x, t )
-        phi1, vara = self.phi_1( x, t )
+        phi0, varb, varab, phi1, vara = self.phi_0( x, t )
         
         # Obtain desired controller
         uc = self.desired_controller.process( self.desired_controller.eval(x, t ) )
@@ -72,7 +70,6 @@ class FilterControllerVar2(Controller):
 
         if prob.status not in ["optimal","optimal_inaccurate"]:
           print(prob.status)  
-          print("Not solved",phi0,phi1,vara,varab,varb,sigma)    
           count = 0
           while count<3 and prob.status not in ["optimal","optimal_inaccurate"]:
             sigmahigh = sigma
@@ -88,7 +85,7 @@ class FilterControllerVar2(Controller):
           if prob.status in ["optimal", "optimal_inaccurate"]:
             ucurr = [u[0].value, u[1].value]
           else:
-            ucurr = uc
+            ucurr = self.eval_novar(x, t, phi0, phi1, uc)
           print("Sigma reduced to:", sigma)
         else:
           ucurr = [u[0].value, u[1].value]
