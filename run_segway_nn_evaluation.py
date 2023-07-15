@@ -16,7 +16,7 @@ import pickle
 from src.segway.keras.utils import initializeSystem, initializeSafetyFilter, simulateSafetyFilter
 from src.segway.keras.handlers import LearnedSegwaySafetyAAR_NN, KerasResidualScalarAffineModel, CombinedController
 from src.plotting.plotting import plotTestStates, plotPhasePlane, plotLearnedCBF
-from src.segway.aux_utils import findSafetyData, findLearnedSafetyData_nn, generateInitialPoints
+from src.common_utils import findSafetyData, findLearnedSafetyData_nn, generateInitialPoints
 
 from utils.print_logger import PrintLogger
 
