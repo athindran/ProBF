@@ -1,64 +1,31 @@
-from core.dynamics import AffineDynamics, ScalarDynamics
-from numpy import array, dot, concatenate, zeros
-from core.dynamics import LearnedAffineDynamics
+from numpy import array, concatenate, zeros, dot
+from core.dynamics import LearnedAffineDynamics, AffineDynamics, ScalarDynamics
 from core.learning.keras import KerasResidualAffineModel
-from core.controllers import Controller
 
 from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Add, Dense, Dot, Input, Reshape, Lambda
 
 
-class SafetyCoordinate(AffineDynamics, ScalarDynamics):
-    """
-    Safety function setup: Quadrotor should not get close to a ball
-    """
-    def __init__(self, ex_quad, x_e, y_e, rad):
-        self.dynamics = ex_quad
-        self.x_e = x_e
-        self.y_e = y_e
-        self.rad = rad
+class LearnedQuadSafety_NN(LearnedAffineDynamics):
+    def __init__(self, quad_safety, scalar_res_aff_model):
+        self.dynamics = quad_safety
+        self.res_model = scalar_res_aff_model
+              
+    def process_drift(self, x, t):
         
-    def eval( self, x, t ):
-        """
-        Check the following paper for choice of safety function
-        https://hybrid-robotics.berkeley.edu/publications/ACC2016_Safety_Control_Planar_Quadrotor.pdf
-        We have to use an extended higher-order CBF as described in this paper
-        https://arxiv.org/pdf/2011.10721.pdf
-        """
-        xpos = x[0]
-        ypos = x[1]
-        #theta = x[2]
-        #xposdd = x[6]
-        #yposdd = x[7]
-        #s = sin(x[2])*(xpos-self.x_e)+cos(x[2])*(ypos-self.y_e)
-        return 0.5*((xpos-self.x_e)**2+(ypos-self.y_e)**2-1.0*self.rad)
-    
-    def dhdx( self, x , t ):
-        # Note that these can be obtained by taking the 4th derivative of CBF
-        derivs = self.dynamics.eval(x,t)
-        #r = derivs[0:2]
-        rd = derivs[2:4]
-        rdd = derivs[4:6]
-        rddd = derivs[6:8]
-        #[r,rd,rdd,rddd] = 
-        xpos = x[0]
-        ypos = x[1]
-        #theta = x[2]
-        #xpdot = x[3]
-        #ypdot = x[4]
-        #thetadot = x[5]
-        #xposdd = x[6]
-        #yposdd = x[7]
-        return array( [(xpos-self.x_e), (ypos-self.y_e), 0., 0., 0., 0., 0., 0. ])
-    
-    def drift( self, x, t ):
-        #print("Drift",dot( self.dhdx( x, t ), self.dynamics.drift( x, t ) ))
-        return dot( self.dhdx( x, t ), self.dynamics.drift( x, t ) )
+        dhdx = self.dynamics.dhdx( x, t )
         
-    def act(self, x, t):
-        #print("Act",dot(self.dhdx( x, t ), self.dynamics.act( x, t ) ))
-        return dot( self.dhdx( x, t ), self.dynamics.act( x, t ) )
+        return concatenate([x, dhdx])
+
+    def process_act(self, x, t):
+        
+        dhdx = self.dynamics.dhdx( x, t )
+        
+        return concatenate([x, dhdx])     
     
+    def init_data(self, d_drift_in, d_act_in, m, d_out):
+        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0)]
+
 """
 Safety function setup: Quadrotor should not get close to a ball
 """
@@ -92,26 +59,6 @@ class SafetyCoordinateReduced(AffineDynamics, ScalarDynamics):
         
     def act(self, x, t):
         return dot( self.dhdx( x, t ), self.dynamics.quad.act( x[self.subset], t ) )
-
-class LearnedQuadSafetyAAR_NN(LearnedAffineDynamics):
-    def __init__(self, quad_safety, scalar_res_aff_model):
-        self.dynamics = quad_safety
-        self.res_model = scalar_res_aff_model
-              
-    def process_drift(self, x, t):
-        
-        dhdx = self.dynamics.dhdx( x, t )
-        
-        return concatenate([x, dhdx])
-
-    def process_act(self, x, t):
-        
-        dhdx = self.dynamics.dhdx( x, t )
-        
-        return concatenate([x, dhdx])     
-    
-    def init_data(self, d_drift_in, d_act_in, m, d_out):
-        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0)]
     
 # Keras Residual Scalar Affine Model Definition
 class KerasResidualScalarAffineModel(KerasResidualAffineModel):
@@ -150,16 +97,3 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
     def eval_act(self, act_input):
         prediction = self.act_model(array([(act_input-self.input_mean)/self.input_std]), training=False).numpy()
         return prediction[0][0]
-    
-# Combined Controller
-class CombinedController(Controller):
-    def __init__(self, controller_1, controller_2, weights):
-        self.controller_1 = controller_1
-        self.controller_2 = controller_2
-        self.weights = weights
-        
-    def eval(self, x, t):
-        u_1 = self.controller_1.process( self.controller_1.eval( x, t ) )
-        u_2 = self.controller_2.process( self.controller_2.eval( x, t ) )
-        return self.weights[ 0 ] * u_1 + self.weights[ 1 ] * u_2
-

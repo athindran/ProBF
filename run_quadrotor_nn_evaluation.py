@@ -11,36 +11,40 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 from utils.print_logger import PrintLogger
 
-from src.quadrotor.keras.utils import initializeSystem, initializeSafetyFilter, simulateSafetyFilter
-from src.quadrotor.keras.handlers import KerasResidualScalarAffineModel, LearnedQuadSafetyAAR_NN, CombinedController
+from src.quadrotor.utils import initializeSystem,  simulateSafetyFilter
+from src.quadrotor.keras.utils import initializeSafetyFilter
+from src.quadrotor.handlers import CombinedController
+from src.quadrotor.keras.handlers import KerasResidualScalarAffineModel, LearnedQuadSafety_NN
+
 from src.plotting.plotting import plotQuadStates, plotQuadTrajectory
-from src.common_utils import findSafetyData, findLearnedSafetyData_nn, generateQuadPoints
+from src.utils import findSafetyData, findLearnedSafetyData_nn, generateQuadPoints
 from core.controllers import FilterController
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
-def evaluateTrainedModel(ex_quad, ex_quad_true, flt_est, flt_true, fb_lin, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, num_episodes, save_dir):                       
+def run_full_evaluation(ex_quad, ex_quad_true, flt_est, flt_true, fb_lin, state_data, safety_learned, safety_est, 
+                        safety_true, comparison_safety, x_0s_test, num_tests, num_episodes, save_dir):                       
   # test for 10 different random points
   num_violations = 0
 
-  phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
+  phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comparison_safety( safety_learned.eval( x, t ) )
   phi_1_learned = lambda x, t: safety_learned.act( x, t )
   flt_learned = FilterController( ex_quad, phi_0_learned, phi_1_learned, fb_lin )
 
-  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(x_0, ex_quad_true, ex_quad, flt_true, flt_est)
-
-  hs_qp_truetrue, _, _, _ = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
-  hs_qp_trueest, _, _, _ = findSafetyData(safety_true, qp_trueest_data, ts_qp)
-
-  xs_qp_trueest, us_qp_trueest = qp_trueest_data
-  xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
-  
   for i in range(num_tests):
     # Learned Controller Simulation
     # Use Learned Controller
     print("Test", i)
 
     x_0 = x_0s_test[i,:]
+    _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(x_0, ex_quad_true, ex_quad, flt_true, flt_est)
+
+    hs_qp_truetrue, _, _, _ = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
+    hs_qp_trueest, _, _, _ = findSafetyData(safety_true, qp_trueest_data, ts_qp)
+
+    xs_qp_trueest, us_qp_trueest = qp_trueest_data
+    xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
+
     freq = 200 # Hz
     tend = 12
 
@@ -60,12 +64,12 @@ def evaluateTrainedModel(ex_quad, ex_quad_true, flt_est, flt_true, fb_lin, state
     _, drifts_true_post_qp, acts_true_post_qp, hdots_true_post_qp = findSafetyData(safety_true, qp_data_post, ts_post_qp)
 
     # Plotting
-    savename = save_dir+"learned_controller_seed{}_run{}.pdf".format(str(rnd_seed),str(i))
+    savename = save_dir+"learned_controller_seed{}_run{}.png".format(str(rnd_seed),str(i))
     plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, savename)
     
     # Trajectory Plotting
-    savename = save_dir+"learned_traj_seed{}_run{}.pdf".format(str(rnd_seed), str(i))
-    pickle.dump(xs_post_qp, open(savename[0:-3]+".p", "wb"))
+    savename = save_dir+"learned_traj_seed{}_run{}.png".format(str(rnd_seed), str(i))
+    pickle.dump(xs_post_qp, open(savename[0:-4]+".p", "wb"))
     plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, safety_true.x_e, safety_true.y_e, safety_true.rad, savename, title_label='LCBF-NN')
 
   # record violations
@@ -82,21 +86,21 @@ def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir):
   safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_output, fb_lin)
 
   alpha = 10
-  comp_safety = lambda r: alpha * r
+  comparison_safety = lambda r: alpha * r
   
   d_drift_in_seg = 14
   d_act_in_seg = 14
   d_hidden_seg= 200
   d_out_seg = 1
-  us_scale = 1.0
+  us_scale = array([1.0, 1.0])
   res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 2, d_out_seg, us_scale)
-  safety_learned = LearnedQuadSafetyAAR_NN(safety_est, res_model_seg)
+  safety_learned = LearnedQuadSafety_NN(safety_est, res_model_seg)
 
   # Episodic Parameters
   weights = linspace(0, 1, num_episodes)
 
   # Controller Setup
-  phi_0 = lambda x, t: safety_est.drift( x, t ) + comp_safety( safety_est.eval( x, t ) )
+  phi_0 = lambda x, t: safety_est.drift( x, t ) + comparison_safety( safety_est.eval( x, t ) )
   phi_1 = lambda x, t: safety_est.act( x, t )
   flt_baseline = FilterController( ex_quad, phi_0, phi_1, fb_lin)
   flt_learned = FilterController( ex_quad, phi_0, phi_1, fb_lin)
@@ -143,35 +147,33 @@ def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir):
     state_data = [np.concatenate((old, new)) for old, new in zip(state_data, [xs])]
     print(state_data[0].shape)
     data = [np.concatenate((old, new)) for old, new in zip(data, data_episode)]
-    
-    drift_inputs, act_inputs, usc, residualsc = data
-
+  
     print("Input mean",safety_learned.res_model.input_mean)
 
     res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 2, d_out_seg, us_scale)
-    safety_learned = LearnedQuadSafetyAAR_NN(safety_est, res_model_seg)
+    safety_learned = LearnedQuadSafety_NN(safety_est, res_model_seg)
     
     safety_learned.res_model.input_mean = np.zeros((14,))
     safety_learned.res_model.input_std = np.ones((14,))
     safety_learned.res_model.us_scale = 1.0
 
     #fit residual model on data
-    safety_learned.fit(data,1,num_epochs=10,validation_split=0.1)
+    safety_learned.fit(data, 32, num_epochs=10, validation_split=0.1)
 
     # Controller Update
-    phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
+    phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comparison_safety( safety_learned.eval( x, t ) )
     phi_1_learned = lambda x, t: safety_learned.act( x, t )
     flt_learned = FilterController( ex_quad, phi_0_learned, phi_1_learned, fb_lin )
     
-  num_violations = evaluateTrainedModel(ex_quad, ex_quad_true, flt_est, flt_true, fb_lin, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, num_episodes, save_dir)
-  print("Violations",num_violations, file=fileh)
-  fileh.close()
+  num_violations = run_full_evaluation(ex_quad, ex_quad_true, flt_est, flt_true, fb_lin, state_data, 
+                                       safety_learned, safety_est, safety_true, comparison_safety,
+                                         x_0s_test, num_tests, num_episodes, save_dir)
   
   return num_violations
 
 
-#rnd_seed_list = [123]
-rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+rnd_seed_list = [123]
+#rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
 # Episodic Learning Setup
 
 experiment_name = "reproduce_quad_nn"
@@ -194,21 +196,21 @@ if not os.path.isdir(model_path):
   os.mkdir(model_path)
 
 num_violations_list = []
-num_episodes = 10
-num_tests = 10
-print_logger = None
+num_episodes = 7
+num_tests = 3
+print_logger = PrintLogger(os.path.join(figure_path, 'log.txt'))
+sys.stdout = print_logger
+sys.stderr = print_logger
 for rnd_seed in rnd_seed_list:
   dirs = figure_path + str(rnd_seed) + "/"
 
   if not os.path.isdir(dirs):
       os.mkdir(dirs) 
   
-  sys.stdout = PrintLogger(os.path.join(dirs, 'log.txt'))
-  sys.stderr = PrintLogger(os.path.join(dirs, 'log.txt')) 
+  print_logger.reset(os.path.join(dirs, 'log.txt'))
   
   num_violations = run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, dirs)
   num_violations_list.append(num_violations)
 
 print_logger.reset(os.path.join(figure_path, 'log.txt'))
-print_logger.reset(os.path.join(figure_path, 'log.txt')) 
 print("num_violations_list: ", num_violations_list)
