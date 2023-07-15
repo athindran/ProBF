@@ -1,53 +1,36 @@
-import numpy as np
-from numpy import array, zeros, concatenate, dot
-
-from core.dynamics import ConfigurationDynamics, PDDynamics, LearnedAffineDynamics, AffineDynamics, ScalarDynamics
-from core.controllers import Controller
-from core.util import differentiate
-
 import torch
-from torch import Tensor as tarray
 import gpytorch
+from torch import Tensor as tarray
 
-class SegwayOutput(ConfigurationDynamics):
-    """
-      Class to represent observable output which is the first two dimensions for Segway
-    """
-    def __init__(self, segway):
-        ConfigurationDynamics.__init__(self, segway, 1)
-        
-    def y(self, q):
-        return q[1:] - .1383
-    
-    def dydq(self, q):
-        return array([[0, 1]])
-    
-    def d2ydq2(self, q):
-        return zeros((1, 2, 2))
+import numpy as np
+from numpy import concatenate, array, zeros, dot
 
-class SegwayPD(PDDynamics):
-    """
-      Return proportional and derivative terms for use by the PD controller
-    """
-    def proportional(self, x, t):
-        return x[0:2] - array([0, .1383])
-    
-    def derivative(self, x, t):
-        return x[2:4]
+from core.util import differentiate
+from core.dynamics import LearnedAffineDynamics, AffineDynamics, ScalarDynamics
 
-# Combined Controller
-class CombinedController(Controller):
-    """Controller combination"""
-    def __init__(self, controller_1, controller_2, weights):
-        self.controller_1 = controller_1
-        self.controller_2 = controller_2
-        self.weights = weights
-        
-    def eval(self, x, t):
-        u_1 = self.controller_1.process( self.controller_1.eval( x, t ) )
-        u_2 = self.controller_2.process( self.controller_2.eval( x, t ) )
-        return self.weights[ 0 ] * u_1 + self.weights[ 1 ] * u_2
-    
+class ExactGPModel(gpytorch.models.ExactGP):
+    """GPytorch model with explicit modeling of kernel"""
+    def __init__(self, train_x, train_y, likelihood):
+        super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+            
+        # Define kernels and covariance function of GP
+        active_dimsu = np.array([0])
+        ku = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel(active_dims=active_dimsu))
+
+        active_dimsv = np.array([1, 2, 3, 4, 6, 8])
+        ka = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
+        self.k1 = ku*ka
+
+        kb = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
+        self.k2 = kb
+        self.covar_module = self.k1 + self.k2
+
+    def forward(self, x):
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
 # Angle-Angle Rate Safety Function Definition
 class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
     """
@@ -95,29 +78,6 @@ class SafetyAngleAngleRate(AffineDynamics, ScalarDynamics):
         """   
         return dot( self.dhdx( x, t ), self.dynamics.act( x, t ) )
     
-class ExactGPModel(gpytorch.models.ExactGP):
-    """GPytorch model with explicit modeling of kernel"""
-    def __init__(self, train_x, train_y, likelihood):
-        super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ConstantMean()
-            
-        # Define kernels and covariance function of GP
-        active_dimsu = np.array([0])
-        ku = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel(active_dims=active_dimsu))
-
-        active_dimsv = np.array([1, 2, 3, 4, 6, 8])
-        ka = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
-        self.k1 = ku*ka
-
-        kb = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dimsv, ard_num_dims=6))
-        self.k2 = kb
-        self.covar_module = self.k1 + self.k2
-
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-    
 # Learned Segway Angle-Angle Rate Safety
 class LearnedSegwaySafetyAAR_gpytorch(LearnedAffineDynamics):
     """
@@ -131,7 +91,7 @@ class LearnedSegwaySafetyAAR_gpytorch(LearnedAffineDynamics):
         """
         self.dynamics = segway_est
         self.residual_model = None
-        self.input_data = []
+        self.input_data_tensor = []
         self.preprocess_mean = torch.zeros((8,))
         self.preprocess_std = 1
         self.residual_std = 1
@@ -179,10 +139,10 @@ class LearnedSegwaySafetyAAR_gpytorch(LearnedAffineDynamics):
         cross2 = cross2.evaluate().float()
         bmean = torch.matmul(cross2, self.alpha)
         
-        mean = bmean*self.residual_std
-        variance = (self.residual_model.k2(xfull, xfull)).evaluate() - torch.matmul( torch.matmul(cross2, self.Kinv), cross2.T )
+        bvariance = (self.residual_model.k2(xfull, xfull)).evaluate() - torch.matmul( torch.matmul(cross2, self.Kinv), cross2.T )
         varab = -torch.matmul( torch.matmul(cross1, self.Kinv), cross2.T)
-        return [self.dynamics.drift(x, t) + mean.detach().cpu().numpy().ravel() + self.residual_mean + self.comparison_safety(self.eval(x, t)), variance.detach().cpu().numpy().ravel(), varab.detach().cpu().numpy().ravel()]
+        return [self.dynamics.drift(x, t) + bmean.detach().cpu().numpy().ravel() + self.comparison_safety(self.eval(x, t)), 
+                bvariance.detach().cpu().numpy().ravel(), varab.detach().cpu().numpy().ravel()]
     
     def act_learned(self, x, t):
         """
@@ -194,9 +154,31 @@ class LearnedSegwaySafetyAAR_gpytorch(LearnedAffineDynamics):
 
         cross = self.residual_model.k1(xfull, self.input_data_tensor).evaluate()/self.us_scale
         mean = torch.matmul(cross, self.alpha)
-        variancequad = self.residual_model.k1(xfull, xfull).evaluate()/(self.us_scale)**2 - torch.matmul( torch.matmul(cross, self.Kinv), cross.T)
-        return self.dynamics.act(x, t) + mean.detach().cpu().numpy().ravel(), variancequad.detach().cpu().numpy().ravel()
+        avariance = self.residual_model.k1(xfull, xfull).evaluate()/(self.us_scale)**2 - torch.matmul( torch.matmul(cross, self.Kinv), cross.T)
+        return self.dynamics.act(x, t) + mean.detach().cpu().numpy().ravel(), avariance.detach().cpu().numpy().ravel()
     
+    def drift_act_learned(self, x, t):
+        xtorch = torch.from_numpy( x )
+        xfull = torch.cat((torch.Tensor([1.0]), torch.divide(self.process_drift_torch(xtorch, t) - self.preprocess_mean, self.preprocess_std)))
+        xfull = torch.reshape(xfull, (-1, 9)).float().to(self.device)
+
+        cross1 = self.residual_model.k1(xfull, self.input_data_tensor)
+        cross1 = cross1.evaluate()
+        cross1 = cross1*(1/self.us_scale)
+        cross2 = self.residual_model.k2(xfull, self.input_data_tensor)
+        cross2 = cross2.evaluate().float()
+        
+        bmean = torch.matmul(cross2, self.alpha)
+        bvariance = (self.residual_model.k2(xfull, xfull)).evaluate() - torch.matmul( torch.matmul(cross2, self.Kinv), cross2.T )
+        varab = -torch.matmul( torch.matmul(cross1, self.Kinv), cross2.T)
+
+        amean = torch.matmul(cross1, self.alpha)
+        avariance = self.residual_model.k1(xfull, xfull).evaluate()/(self.us_scale)**2 - torch.matmul( torch.matmul(cross1, self.Kinv), cross1.T)
+
+        return [self.dynamics.drift(x, t) + bmean.detach().cpu().numpy().ravel() + self.comparison_safety(self.eval(x, t)), 
+                bvariance.detach().cpu().numpy().ravel(), varab.detach().cpu().numpy().ravel(),
+                self.dynamics.act(x, t) + amean.detach().cpu().numpy().ravel(), avariance.detach().cpu().numpy().ravel()]
+        
     def process_episode(self, xs, us, ts, window=3):
         """
             Data pre-processing step to generate plots
@@ -269,4 +251,5 @@ class LearnedSegwaySafetyAAR_gpytorch(LearnedAffineDynamics):
         #return drift_inputs, act_inputs, us, residuals, apreds, bpreds, apredsvar, bpredsvar, respreds, endpoint
 
     def init_data(self, d_drift_in, d_act_in, m, d_out):
-        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0)] 
+        return [zeros((0, d_drift_in)), zeros((0, d_act_in)), zeros((0, m)), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0), zeros(0)]
+    

@@ -11,16 +11,18 @@ import gpytorch
 
 from core.controllers import FilterController, FilterControllerVar
 
-from src.segway.torch.utils import initializeSystem, initializeSafetyFilter, simulateSafetyFilter
-from src.segway.torch.handlers import LearnedSegwaySafetyAAR_gpytorch, ExactGPModel, CombinedController
-from src.common_utils import findSafetyData, findLearnedSafetyData_gp, downsample, standardize, generateInitialPoints
+from src.segway.utils import initializeSystem, simulateSafetyFilter
+from src.segway.torch.utils import initializeSafetyFilter
+from src.segway.handlers import CombinedController
+from src.segway.torch.handlers import LearnedSegwaySafetyAAR_gpytorch, ExactGPModel
+from src.utils import findSafetyData, findLearnedSafetyData_gp, downsample, standardize, generateInitialPoints
 from src.plotting.plotting import plotTestStates, plotPhasePlane, plotLearnedCBF, plotPredictions
 
 from utils.print_logger import PrintLogger
 
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
-from matplotlib.pyplot import grid, legend, plot, title, xlabel, ylabel
+from matplotlib.pyplot import legend, plot, title, xlabel, ylabel
 
 #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 device = 'cpu'
@@ -29,8 +31,8 @@ print("Device", device)
 def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned,
                         safety_true, figure_dir="./"):
     # Phase Plane Plotting
-    phi_0_learned = lambda x, t: safety_learned.drift_learned( x, t )   
-    phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
+    phi_0_learned = lambda x, t: safety_learned.drift_act_learned( x, t )   
+    #phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
     _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
 
     freq = 500 # Hz 
@@ -59,7 +61,7 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
 
       for z_index, sigma in enumerate([0, 0.5, 1.0, 1.5]):
         x_0 = x_0s_test[i, :]
-        flt_learned = FilterControllerVar( seg_est, phi_0_learned, phi_1_learned, pd, sigma)
+        flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma)
         qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
         xs_post_qp, _ = qp_data_post   
         
@@ -98,8 +100,8 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
   xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
 
   phi_0_learned = lambda x, t: safety_learned.drift_learned( x, t )   
-  phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
-  flt_learned = FilterControllerVar( seg_est, phi_0_learned, phi_1_learned, pd, sigma)
+  #phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
+  flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma)
 
   freq = 500 # Hz 
   tend = 3
@@ -406,9 +408,9 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       safety_learned.comparison_safety = comparison_safety
       
       # Controller Update
-      phi_0_learned = safety_learned.drift_learned 
-      phi_1_learned = safety_learned.act_learned
-      flt_learned = FilterControllerVar( seg_est, phi_0_learned, phi_1_learned, pd, sigma=sigma_train)
+      phi_0_learned = safety_learned.drift_act_learned 
+      #phi_1_learned = safety_learned.act_learned
+      flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma=sigma_train)
       
   print(residual_model.covar_module.kernels[0].kernels[1].outputscale)
   print(residual_model.covar_module.kernels[1].outputscale)
@@ -446,8 +448,8 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
   return num_violations
 
 def run_validation():
-  rnd_seed_list = [124, 235]  
-  #rnd_seed_list = [ 124, 235, 346, 457, 568, 679, 780, 891, 902, 13]
+  #rnd_seed_list = [124, 235]  
+  rnd_seed_list = [ 124, 235, 346, 457, 568, 679, 780, 891, 902, 13]
   
   sigma_train_list = np.array([0, 0.5, 1.0])
   sigma_val_list = [[0, 0.5, 1.0, 1.5],
@@ -521,7 +523,8 @@ def run_testing():
   num_violations_list = []
   num_episodes = 5
 
-  experiment_name = "runall_quant_reproduce_allseeds"
+  #experiment_name = "runall_quant_reproduce_allseeds"
+  experiment_name = "check_run"
 
   parent_path = "/scratch/gpfs/arkumar/ProBF/"
   parent_path = os.path.join(parent_path, experiment_name)
@@ -540,6 +543,7 @@ def run_testing():
   if not os.path.isdir(model_path):
     os.mkdir(model_path)
 
+  print_logger = None
   for rnd_seed in rnd_seed_list:
     figure_dirs = figure_path + str(rnd_seed) + "/"
     model_dirs = model_path + str(rnd_seed) + "/"
@@ -554,7 +558,7 @@ def run_testing():
     sys.stderr = print_logger 
 
     num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, 
-                                                num_tests=10, sigma_train=0.0, sigma_val=[1.0], run_quant_evaluation=True, run_qual_evaluation=False)
+                                                num_tests=2, sigma_train=0.0, sigma_val=[1.0], run_quant_evaluation=False, run_qual_evaluation=True)
     print("No. of violations", num_violations_c)
     num_violations_list.append(num_violations_c)
 
@@ -563,4 +567,5 @@ def run_testing():
   print("num_violations_list: ", num_violations_list)
 
 if __name__=='__main__':
+  #run_validation()
   run_testing()

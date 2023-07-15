@@ -13,7 +13,7 @@ from cvxpy.error import SolverError
 class FilterControllerVar(Controller):
     """Class for solving ProBF-QCQP using the convex relaxation."""
 
-    def __init__(self, affine_dynamics, phi_0, phi_1, desired_controller, sigma = 2.0):
+    def __init__(self, affine_dynamics, phi_0, desired_controller, sigma = 2.0):
         """Create an FBLinController object.
 
         Policy is u = (act)^-1 * (-drift + aux), where drift and act are
@@ -29,14 +29,14 @@ class FilterControllerVar(Controller):
         Controller.__init__(self, affine_dynamics)
         self.affine_dynamics = affine_dynamics
         self.phi_0 = phi_0
-        self.phi_1 = phi_1
+        #self.phi_1 = phi_1
         self.desired_controller = desired_controller
         self.sigma = sigma
     
     def eval(self, x, t):
         # Evaluate mean and variance
-        phi0, varb, varab = self.phi_0( x, t )
-        phi1, vara = self.phi_1( x, t )
+        phi0, varb, varab, phi1, vara = self.phi_0( x, t )
+        #phi1, vara = self.phi_1( x, t )
 
         # Evaluate desired controller
         uc = self.desired_controller.process( self.desired_controller.eval( x, t ) )
