@@ -38,7 +38,11 @@ class PlanarQuadrotor(RoboticDynamics):
         def step(self, x_0, u_0, t_0, t_f, atol=1e-6, rtol=1e-6):
             x = x_0[:6]
             f, f_dot = x_0[-2:]
+            
+            # u_0 is input to extension
             f_ddot, tau = u_0
+
+            # u is input to actual system
             u = array([f, tau])
 
             dt = t_f - t_0
