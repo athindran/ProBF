@@ -425,29 +425,31 @@ def plotPredictions(safety_learned, data_episode, savename, device='cpu'):
 
     close()
 
-def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, x_e, y_e, rad_square, savename, title_label='ProBF-GP'):
+def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, 
+                       obstacle_position, rad_square, x_d,
+                       savename, title_label='ProBF-GP'):
     ebs = int(len(state_data[0])/num_episodes)
     # Intermediate Results
     f = figure(figsize=(10, 8))
     plot(state_data[0][0*ebs:1*ebs,0], state_data[0][0*ebs:1*ebs,1], 'r', linewidth = 2, alpha = 0.3, label="Episode 1")
     plot(state_data[0][2*ebs:3*ebs,0], state_data[0][2*ebs:3*ebs,1], 'r', linewidth = 2, alpha = 0.3, label="Episode 3")
     #plot(state_data[0][1*ebs:2*ebs,0], state_data[0][1*ebs:2*ebs,1], 'r', linewidth = 2, alpha = 0.5, label="Episode 2")
-    plot(state_data[0][6*ebs:7*ebs,0], state_data[0][6*ebs:7*ebs,1], 'r', linewidth = 2, alpha = 0.7, label="Episode 7")
+    #plot(state_data[0][6*ebs:7*ebs,0], state_data[0][6*ebs:7*ebs,1], 'r', linewidth = 2, alpha = 0.7, label="Episode 7")
     #plot(state_data[0][7*ebs:8*ebs,0], state_data[0][7*ebs:8*ebs,1], 'r', linewidth = 2, alpha = 0.8, label="Episode 8")
     plot(xs_post_qp[:, 0], xs_post_qp[:, 1], 'b', linewidth=2, label=title_label)
     plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'g', label='Nominal Model')
-    plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'c', label='True-True-QP')
-    circle = Circle((x_e,y_e),0.9*np.sqrt(rad_square),color="y")
-    fig = plt.gcf()
-    ax = fig.gca()
+    plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'c', label='True model')
+    circle = Circle((obstacle_position[0], obstacle_position[1]), np.sqrt(rad_square),color="y")
+    ax = f.gca()
     ax.add_patch(circle)
-
-    grid()
-    legend(fontsize=18)
-    xlabel('$x$', fontsize=18)
-    ylabel('$y$', fontsize=18)
-    plt.xlim([-3,3])
-    plt.ylim([-1,2.5])
+    ax.plot(x_d[0, :], x_d[1, :], 'k*', label='Desired')
+    ax.set_xticks([-2, obstacle_position[0], x_d[0, 0], 13])
+    ax.set_yticks([-2, obstacle_position[1], x_d[1, 0], 13])
+    ax.set_ylabel('Y position')
+    ax.set_xlabel('X position')
+    ax.set_xlim([-2, 13])
+    ax.set_ylim([-2, 13])
+    ax.legend()
     f.savefig(savename, bbox_inches='tight') 
 
     close()

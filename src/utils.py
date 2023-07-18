@@ -144,6 +144,35 @@ def findLearnedSafetyData_nn(safety_learned, sim_data, ts_post_qp):
     
     return drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, hdots_post_num
 
+def findLearnedQuadSafetyData_gp(safety_learned, sim_data, ts_post_qp):
+    """  
+      Post-process the trajectory and evaluate CBF and Lie derivatives with GP modeling.
+
+      Inputs:
+        safety_learned: Learned Safety filter
+        sim_data: Simulation data of trajectories
+        ts_post_qp: Array of time samples of trajectories
+
+      Outputs:
+        drifts_learned_post_qp: CBF Lie derivatives along control-independent dynamics based on predictions
+        acts_learned_post_qp: CBF Lie derivatives along control-dependent dynamics based on predictions
+        hdots_learned_post_qp: CBF time derivatives based on predictions
+        hs_post_qp: CBF evaluations
+        hdots_post_num: Numerical Time derivatives of CBF
+    """
+    xs_post_qp, us_post_qp = sim_data
+    
+    drifts_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
+    acts_learned_post_qp = array([safety_learned.act_learned(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
+    hdots_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] + dot(safety_learned.act_learned(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
+
+    # Learned Controller Plotting
+
+    hs_post_qp = array([safety_learned.eval(x,t) for x, t in zip(xs_post_qp, ts_post_qp)])
+    hdots_post_num = differentiate( hs_post_qp, ts_post_qp)
+    
+    return drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, hdots_post_num
+
 def findLearnedSafetyData_gp(safety_learned, sim_data, ts_post_qp):
     """  
       Post-process the trajectory and evaluate CBF and Lie derivatives with GP modeling.
@@ -164,7 +193,6 @@ def findLearnedSafetyData_gp(safety_learned, sim_data, ts_post_qp):
     drifts_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comparison_safety(safety_learned.eval(x,t)) for x, t in zip(xs_post_qp, ts_post_qp)])
     acts_learned_post_qp = array([safety_learned.act_learned(x,t)[0] for x, t in zip(xs_post_qp, ts_post_qp)])
     hdots_learned_post_qp = array([safety_learned.drift_learned(x,t)[0] - safety_learned.comparison_safety(safety_learned.eval(x,t)) + dot(safety_learned.act_learned(x,t)[0],u) for x, u, t in zip(xs_post_qp[:-1], us_post_qp, ts_post_qp[:-1])])
-
     # Learned Controller Plotting
 
     hs_post_qp = array([safety_learned.eval(x,t) for x, t in zip(xs_post_qp, ts_post_qp)])

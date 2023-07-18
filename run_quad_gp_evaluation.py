@@ -10,22 +10,28 @@ from matplotlib import pyplot as plt
 from matplotlib.pyplot import Circle
 import matplotlib.patches as patches
 
+import torch
+import gpytorch
+
+from src.quadrotor.controllers.filter_controller_qcqp import FilterControllerQCQP
 from src.quadrotor.controllers.filter_controller import FilterController
 from src.quadrotor.utils import initializeSystemAndController, simulateSafetyFilter
-from src.quadrotor.keras.utils import initializeSafetyFilter
-from src.utils import generateQuadPoints, findSafetyData, findLearnedSafetyData_nn
+from src.quadrotor.torch.utils import initializeSafetyFilter
+from src.utils import generateQuadPoints, findSafetyData, findLearnedQuadSafetyData_gp, downsample, standardize
 from utils.print_logger import PrintLogger
 from src.quadrotor.handlers import CombinedController
-from src.quadrotor.keras.handlers import KerasResidualScalarAffineModel, LearnedQuadSafety_NN
+from src.quadrotor.torch.handlers import LearnedQuadSafety_gpy, ExactGPModel
 from src.plotting.plotting import plotQuadStatesv2, make_animation, plotQuadTrajectory
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print("Device", device)
 
 def run_full_evaluation(rnd_seed, quad, quad_true, flt_est, flt_true, sqp_true, state_data, safety_learned, safety_est, 
                         safety_true, x_0s_test, num_tests, num_episodes, save_dir):                       
   # test for 10 different random points
   num_violations = 0
 
-  flt_learned = FilterController( safety_learned, sqp_true )
+  flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=0.7)
   
   trueest_violations = 0
   truetrue_violations = 0
@@ -52,7 +58,7 @@ def run_full_evaluation(rnd_seed, quad, quad_true, flt_est, flt_true, sqp_true, 
     xs_post_qp, us_post_qp = qp_data_post
 
     savename = save_dir+"residual_predict_seed{}_run{}.pdf".format(str(rnd_seed),str(i))
-    _, _, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_nn(safety_learned, qp_data_post, ts_post_qp)
+    _, _, hdots_learned_post_qp, hs_post_qp, _ = findLearnedQuadSafetyData_gp(safety_learned, qp_data_post, ts_post_qp)
    
     # check violation of safety
     if np.any(hs_post_qp < 0.0):
@@ -72,7 +78,7 @@ def run_full_evaluation(rnd_seed, quad, quad_true, flt_est, flt_true, sqp_true, 
     fig2, axes2 = plt.subplots(2, 3, figsize=(13,8))
     plotQuadStatesv2(axes2, ts_qp, xs_qp_trueest, us_qp_trueest, hs_qp_trueest, hdots_qp_trueest, label='TrueEst', clr='r')
     plotQuadStatesv2(axes2, ts_qp, xs_qp_truetrue, us_qp_truetrue, hs_qp_truetrue, hdots_qp_truetrue, label='TrueTrue', clr='g')
-    plotQuadStatesv2(axes2, ts_qp, xs_post_qp, us_post_qp, hs_post_qp, hdots_learned_post_qp, label='LCBF-NN', clr='b')
+    plotQuadStatesv2(axes2, ts_qp, xs_post_qp, us_post_qp, hs_post_qp, hdots_learned_post_qp, label='ProBF-GP', clr='b')
     fig2.savefig(savename)
 
     # Trajectory Plotting
@@ -88,7 +94,7 @@ def run_full_evaluation(rnd_seed, quad, quad_true, flt_est, flt_true, sqp_true, 
   print("Truetrue violations", truetrue_violations)
   return num_violations
 
-def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quant_evaluation=True, run_qual_evaluation=False):
+def run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, save_dir, run_quant_evaluation=True, run_qual_evaluation=False):
     fileh = open(save_dir+"viol.txt","w",buffering=5)
     seed(rnd_seed)
 
@@ -113,7 +119,7 @@ def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
     ic_prec = 0.5  
     d_drift_in_seg = 6
     d_act_in_seg = 6
-    d_hidden_seg= 300
+    d_hidden_seg= 100
     d_out_seg = 1
     us_scale = array([1.0, 1.0])
     
@@ -126,15 +132,14 @@ def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
     print('x_0s:', x_0s)
     print('x_0s_test:', x_0s_test)
 
-    res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 2, d_out_seg, us_scale)
-    safety_learned = LearnedQuadSafety_NN(safety_est, res_model_seg)
+    safety_learned = LearnedQuadSafety_gpy(safety_est, device=device)
 
     # Episodic Parameters
     weights = linspace(0, 1, num_episodes)
 
     # Controller Setup
     flt_baseline = FilterController( safety_est, sqp_true)
-    flt_learned = FilterController( safety_learned, sqp_true )
+    flt_learned = FilterController( safety_est, sqp_true )
 
     # Data Storage Setup
     state_data = [zeros((0, 6))]
@@ -159,14 +164,91 @@ def run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
         state_data = [np.concatenate((old, new)) for old, new in zip(state_data, [xs])]
         data = [np.concatenate((old, new)) for old, new in zip(data, data_episode)]
   
-        res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 2, d_out_seg, us_scale)
-        safety_learned = LearnedQuadSafety_NN(safety_est, res_model_seg)
-    
-        #fit residual model on data
-        safety_learned.fit(data, 32, num_epochs=10, validation_split=0.1)
+        drift_inputs_long, act_inputs_long, us_long, residuals_long = data
 
+        downsample_rate = 5
+        drift_inputs, _, us, residuals = downsample([drift_inputs_long, act_inputs_long, us_long, residuals_long], downsample_rate)
+    
+        normalized_data, preprocess_mean, preprocess_std = standardize(drift_inputs)
+    
+        us_scale = array([[1, 1]])
+    
+        input_data = np.concatenate((us, normalized_data),axis=1)
+
+        #residuals = residuals.ravel() + 0.01*np.random.randn(residuals.size,)
+
+        ndata = input_data.shape[0]
+        print("Number of data points: ", ndata)
+    
+        likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        likelihood.noise = 0.01
+        input_data_tensor = torch.from_numpy(input_data).float()
+        residuals_tensor = torch.from_numpy(residuals.ravel()).float()
+    
+        residual_model = ExactGPModel(input_data_tensor, residuals_tensor, likelihood)
+
+        if i >=5:
+          adam_lr = 0.006
+          training_iter = 300
+        else:
+          adam_lr = 0.009
+          training_iter = 300
+
+        # load to gpu if possible
+        if device!="cpu":
+          input_data_tensor = input_data_tensor.to(device)
+          residuals_tensor = residuals_tensor.to(device)
+          residual_model.k11 = residual_model.k11.to(device)
+          residual_model.k12 = residual_model.k12.to(device)
+          residual_model.k2 = residual_model.k2.to(device)
+          residual_model = residual_model.to(device)
+          likelihood = likelihood.to(device)
+    
+        residual_model.train()
+        likelihood.train()
+
+        # Use the adam optimizer
+        optimizer = torch.optim.Adam([
+          {'params': residual_model.parameters()},  # Includes GaussianLikelihood parameters
+          ], lr=adam_lr)
+
+        # "Loss" for GPs - the marginal log likelihood
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, residual_model)
+    
+        #:
+        with gpytorch.settings.max_cg_iterations(10000), gpytorch.settings.cholesky_jitter(1e-4), gpytorch.settings.max_preconditioner_size(15):
+          for i in range(training_iter):
+            # Zero gradients from previous iteration
+            optimizer.zero_grad()
+            # Output from model
+            output = residual_model(input_data_tensor)
+            #print(output)
+            # Calc loss and backprop gradients
+            #gpytorch.settings.max_cg_iterations(10000)
+            loss = -mll(output, residuals_tensor)
+            loss.backward()
+            if(i%5==0):
+                print("Loss",loss)      
+                print('Iter %d/%d - Loss: %.3f   noise: %.3f' % (
+                    i + 1, training_iter, loss.item(),
+                    residual_model.likelihood.noise.item()
+                ))
+            optimizer.step()
+    
+
+        safety_learned = LearnedQuadSafety_gpy(safety_est, device=device)
+        safety_learned.residual_model = residual_model
+        safety_learned.us_scale = us_scale
+        safety_learned.Kinv = torch.pinverse( residual_model.covar_module( input_data_tensor ).evaluate() 
+                                           + residual_model.likelihood.noise.item()*torch.eye( input_data_tensor.shape[0] ).to(device) )  
+ 
+        safety_learned.alpha = torch.matmul(safety_learned.Kinv, torch.from_numpy(residuals).float().to(device) )
+        safety_learned.input_data_tensor = input_data_tensor
+        safety_learned.preprocess_mean = torch.from_numpy( preprocess_mean[0] )
+        safety_learned.preprocess_std = torch.from_numpy( preprocess_std[0] )
+    
         # Controller Update
-        flt_learned = FilterController( safety_learned, sqp_true )
+        flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=0.4)
     
     num_violations = run_full_evaluation(rnd_seed, quad=quad, quad_true=quad_true, flt_est=flt_est, flt_true=flt_true, sqp_true=sqp_true, state_data=state_data, 
                                        safety_learned=safety_learned, safety_est=safety_est, safety_true=safety_true,
@@ -262,7 +344,7 @@ def test_quadrotor_cbf(rnd_seed, work_dir ):
     print('True Est violations', trueest_violations)
     
 if __name__=='__main__':
-  rnd_seed_list = [123, 234]
+  rnd_seed_list = [123]
   #rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
   
   # Episodic Learning Setup
@@ -278,10 +360,10 @@ if __name__=='__main__':
     os.mkdir( os.path.join(parent_path, "exps") )
     os.mkdir( os.path.join(parent_path, "models") )
  
-  test_quadrotor_cbf(123, baseline_dir)
+  #test_quadrotor_cbf(123, baseline_dir)
 
-  figure_path = os.path.join(parent_path, "exps/quad_modular_nn/")
-  model_path = os.path.join(parent_path, "models/quad_modular_nn/")
+  figure_path = os.path.join(parent_path, "exps/quad_modular_gp/")
+  model_path = os.path.join(parent_path, "models/quad_modular_gp/")
 
   if not os.path.isdir(figure_path):
     os.mkdir(figure_path)
@@ -299,13 +381,13 @@ if __name__=='__main__':
     if not os.path.isdir(dirs):
       os.mkdir(dirs) 
   
-    print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
-    sys.stdout = print_logger
-    sys.stderr = print_logger
+    #print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
+    #sys.stdout = print_logger
+    #sys.stderr = print_logger
 
-    num_violations = run_quadrotor_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
+    num_violations = run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
     num_violations_list.append(num_violations)
 
-  print_logger.reset(os.path.join(figure_path, 'log.txt'))
-  print_logger.reset(os.path.join(figure_path, 'log.txt')) 
+  #print_logger.reset(os.path.join(figure_path, 'log.txt'))
+  #print_logger.reset(os.path.join(figure_path, 'log.txt')) 
   print("num_violations_list: ", num_violations_list)
