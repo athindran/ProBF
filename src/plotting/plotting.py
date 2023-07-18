@@ -2,6 +2,53 @@ from matplotlib.pyplot import cla, Circle, figure, grid, legend, plot, show, sub
 import numpy as np
 from matplotlib import pyplot as plt
 
+import imageio
+import os
+
+def make_animation(xs_array, x_d, obstacle_position, obstacle_rad2, fig_folder='./animation'):  
+  """
+    Animate array of positions:
+    Inputs:
+        xs_array: Array of time varying quadrotor position
+        x_d: Desired Quadrotor location
+        obstacle_position: Position of obstacle
+        obstacle_rad2: Radius^{2} of obstacle
+  """
+  if not os.path.isdir(fig_folder):
+      os.mkdir(fig_folder)
+
+  frame_skip = 20
+  for i in range(0, xs_array.shape[0], frame_skip):
+    quadrotor_position = xs_array[i][0:2]
+    quadrotor_orientation = xs_array[i][2] 
+    length = 0.5
+
+    quadrotor_left_x = quadrotor_position[0] - length*np.cos(quadrotor_orientation)
+    quadrotor_left_y = quadrotor_position[1] + length*np.sin(quadrotor_orientation)
+    quadrotor_right_x = quadrotor_position[0] + length*np.cos(quadrotor_orientation)
+    quadrotor_right_y = quadrotor_position[1] - length*np.sin(quadrotor_orientation)
+    f = plt.figure(figsize=(6, 4))
+    plt.plot(x_d[0, :], x_d[1, :], 'k*', label='Desired')
+    plt.plot([quadrotor_left_x, quadrotor_right_x], [quadrotor_left_y, quadrotor_right_y], 'x-')
+    circle = Circle((obstacle_position[0], obstacle_position[1]), np.sqrt(obstacle_rad2) - 1.0, color="y")
+    ax = f.gca()
+    ax.add_patch(circle)
+    ax.set_xticks([obstacle_position[0], x_d[0, 0], 13])
+    ax.set_yticks([obstacle_position[1], x_d[1, 0], 13])
+    ax.set_ylabel('Y position')
+    ax.set_xlabel('X position')
+    ax.set_xlim([-2, 10])
+    ax.set_ylim([-1, 11])
+    ax.legend()
+    plt.savefig(fig_folder + str(i) + '.png')
+    plt.close()
+  
+  gif_path = fig_folder + 'rollout.gif'
+  with imageio.get_writer(gif_path, mode='I') as writer:
+    for i in range(0, xs_array.shape[0], frame_skip):
+        filename = os.path.join(fig_folder, str(i) + ".png")
+        image = imageio.imread(filename)
+        writer.append_data(image)
 
 def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd_list, residual_true_list, residual_pred_list,
                       residual_pred_lower_list, residual_pred_upper_list, residual_pred_compare_list, num_episodes, ebs, savedir, rnd_seed):
@@ -64,7 +111,9 @@ def plotTrainMetaData(alearn, atrue, aest, blearn, btrue, best, avar, bvar, ustd
 
         close()
 
-def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, savename):
+def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue,
+                    us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
+                    drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, savename):
     
     f = figure(figsize=(16, 16))
     subplot(521)
@@ -153,6 +202,51 @@ def plotQuadStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp,
     f.savefig(savename, bbox_inches='tight')
 
     close()
+
+
+def plotQuadStatesv2(axes2, ts_qp, xs_qp, us_qp, hs_qp, hdots_qp, label='TrueEst', clr='r'):
+    from core.util import differentiate
+    lw = 2
+    fs = 12
+
+    hdots_num_qp = differentiate(hs_qp, ts_qp)
+    axes2[0, 0].plot(ts_qp, xs_qp[:, 0], color=clr, linewidth=lw, label = label)
+    axes2[0, 0].grid(visible=True)
+    axes2[0 ,0].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[0 ,0].set_ylabel('$x (m)$', fontsize=fs)
+    axes2[0 ,0].legend(fontsize =fs)
+
+    axes2[0, 1].plot(ts_qp, xs_qp[:, 1], color=clr, linewidth=lw, label = label)
+    axes2[0, 1].grid(visible=True)
+    axes2[0, 1].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[0, 1].set_ylabel('$y (m)$', fontsize=fs)
+    axes2[0, 1].legend(fontsize=fs)
+
+    axes2[0, 2].plot(ts_qp, hs_qp, color=clr, linewidth=lw, label = label)
+    axes2[0, 2].grid(visible=True)
+    axes2[0, 2].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[0, 2].set_ylabel('$h$', fontsize=fs)
+    axes2[0, 2].set_ylim([-1, 10])
+    axes2[0, 2].legend(fontsize=fs)
+
+    axes2[1, 0].plot(ts_qp[:-1], us_qp[:, 0], color=clr, linewidth=lw, label = label)
+    axes2[1, 0].grid(visible=True)
+    axes2[1, 0].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[1, 0].set_ylabel('$\\tau_1$', fontsize=fs)
+    axes2[1, 0].legend(fontsize=16)
+    
+    axes2[1, 1].plot(ts_qp[:-1], us_qp[:, 1], color=clr, linewidth=lw, label = label)
+    axes2[1, 1].grid(visible=True)
+    axes2[1, 1].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[1, 1].set_ylabel('$\\tau_2$', fontsize=fs)
+    axes2[1, 1].legend(fontsize=fs)
+
+    axes2[1, 2].plot(ts_qp[:-1], hdots_qp, color=clr, linewidth=lw, label=label)
+    axes2[1, 2].plot(ts_qp[1:-1], hdots_num_qp, color=clr, linestyle='dashed', linewidth=lw, label=label)
+    axes2[1, 2].grid(visible=True)
+    axes2[1, 2].set_xlabel('Time (sec)', fontsize=fs)
+    axes2[1, 2].set_ylabel('$\\dot{h}$', fontsize=fs)
+    axes2[1, 2].legend(fontsize=fs)
 
 def plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, theta_bound_u, theta_bound_l, savename):
     
@@ -331,7 +425,7 @@ def plotPredictions(safety_learned, data_episode, savename, device='cpu'):
 
     close()
 
-def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, x_e, y_e, rad, savename, title_label='ProBF-GP'):
+def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_qp_truetrue, x_e, y_e, rad_square, savename, title_label='ProBF-GP'):
     ebs = int(len(state_data[0])/num_episodes)
     # Intermediate Results
     f = figure(figsize=(10, 8))
@@ -342,8 +436,8 @@ def plotQuadTrajectory(state_data, num_episodes, xs_post_qp, xs_qp_trueest, xs_q
     #plot(state_data[0][7*ebs:8*ebs,0], state_data[0][7*ebs:8*ebs,1], 'r', linewidth = 2, alpha = 0.8, label="Episode 8")
     plot(xs_post_qp[:, 0], xs_post_qp[:, 1], 'b', linewidth=2, label=title_label)
     plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'g', label='Nominal Model')
-    #plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'c', label='True-True-QP')
-    circle = Circle((x_e,y_e),0.9*np.sqrt(rad),color="y")
+    plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'c', label='True-True-QP')
+    circle = Circle((x_e,y_e),0.9*np.sqrt(rad_square),color="y")
     fig = plt.gcf()
     ax = fig.gca()
     ax.add_patch(circle)

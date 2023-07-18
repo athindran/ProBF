@@ -1,5 +1,5 @@
 from core.controllers import FilterController
-from .handlers import SafetyCoordinateReduced
+from .handlers import SafetyCoordinate, SafetyCoordinateReduced
 
 
 def initializeSafetyFilter(ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_output, fb_lin):

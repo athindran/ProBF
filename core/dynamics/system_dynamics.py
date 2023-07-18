@@ -21,6 +21,7 @@ class SystemDynamics(Dynamics):
 
         self.n = n
         self.m = m
+        self.limits = None
 
     def eval(self, x, t):
         return x
@@ -42,7 +43,6 @@ class SystemDynamics(Dynamics):
         Outputs:
         State at final time: numpy array
         """
-
         x_dot = lambda t, x: self.eval_dot(x, u_0, t)
         t_span = [t_0, t_f]
         res = solve_ivp(x_dot, t_span, x_0, atol=atol, rtol=rtol)
@@ -82,9 +82,9 @@ class SystemDynamics(Dynamics):
             x = xs[j]
             t = ts[j]
             u = controller.eval(x, t)
-            us[j] = u
             u = controller.process(u)
             xs[j + 1] = self.step(x, u, t, ts[j + 1])
+            us[j] = u
 
         if processed:
             us = array([controller.process(u) for u in us])
