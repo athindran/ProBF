@@ -1,39 +1,24 @@
-from core.controllers import FilterController
-from .handlers import SafetyCoordinateReduced, SafetyCoordinate
+from src.quadrotor.controllers.filter_controller import FilterController
+from ..handlers import QuadrotorObstacleSafety
 
 
-def initializeSafetyFilter(ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_output, fb_lin):
+def initializeSafetyFilter(quad, quad_true, sqp_true, obstacle_position, obstacle_rad2, cbf_gamma, cbf_beta):
     """
         Initialize safety filters based on true system and system estimate:
 
         Args:
-            ex_quad: Extended planar quadrotor with parameter estimates 
-            ex_quad_true: Extended planar quadrotor with true parameters 
-            ex_quad_output: Output of estimated quadrotor
-            ex_quad_true_output: Output of true quadrotor
-            fb_lin: Feedback linearized dynamics
+            quad: Planar quadrotor with parameter estimates 
+            quad_true: Planar quadrotor with true parameters 
+            sqp_true: Stabilizing controller with true parameters
+            obstacle_position: Position of obstacle
+            obstacle_rad2: Squared radius of obstacle
+            cbf_gamma: Parameter gamma used in CBF
+            cbf_beta: Parameter beta used in CBF
     """
-    #x_e = 1.8
-    #y_e = 0.6
-    #rad = 0.32
-    x_e = 1.85
-    y_e = 0.6
-    rad = 0.28
-    
-    safety_est = SafetyCoordinate( ex_quad_output, x_e, y_e, rad)
-    safety_true = SafetyCoordinate( ex_quad_true_output, x_e, y_e, rad)
+    safety_true = QuadrotorObstacleSafety( quad_true, obstacle_position, obstacle_rad2, gamma=cbf_gamma, beta=cbf_beta)
+    flt_true = FilterController( safety_true, sqp_true)
 
-    # Alpha tuning very critical
-    alpha = 10
-    comp_safety = lambda r: alpha * r
-    phi_0_est = lambda x, t: safety_est.drift( x, t ) + comp_safety( safety_est.eval( x, t ) )
-    phi_1_est = lambda x, t: safety_est.act( x, t )
-    phi_0_true = lambda x, t: safety_true.drift( x, t ) + comp_safety( safety_true.eval( x, t ) )
-    phi_1_true = lambda x, t: safety_true.act( x, t )
+    safety_est = QuadrotorObstacleSafety( quad, obstacle_position, obstacle_rad2, gamma=cbf_gamma, beta=cbf_beta)
+    flt_est = FilterController( safety_est, sqp_true)
 
-    # IMPORTANT: There is a key assumption here. The stabilizing controller knows the true system. It is an oracle.
-    # IMPORTANT: BUT THE SAFETY FILTER DOES NOT KNOW THE TRUE SYSTEM
-    flt_est = FilterController( ex_quad, phi_0_est, phi_1_est, fb_lin)
-    flt_true = FilterController( ex_quad_true, phi_0_true, phi_1_true, fb_lin)
-    
     return safety_est, safety_true, flt_est, flt_true

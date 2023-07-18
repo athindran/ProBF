@@ -148,7 +148,7 @@ class orientationCLF(AffineDynamics, ScalarDynamics):
         return phi0, phi1
 
 class QuadrotorObstacleSafety(AffineDynamics, ScalarDynamics):
-    # CBF for avoiding obstacke
+    # Reciprocal CBF for avoiding obstacke
     def __init__(self, quad, x_ob, rad2_ob, gamma, beta=1.3):
         self.dynamics = quad 
         self.obstacle_position = x_ob
@@ -172,6 +172,10 @@ class QuadrotorObstacleSafety(AffineDynamics, ScalarDynamics):
         hfunc = self.gamma*(gfunc - sfunc) + gfuncdot - sfuncdot
 
         return hfunc
+    
+    def eval_reciprocal(self, x, t):
+        hfunc = self.eval(x, t)
+        return 1/(hfunc + 1e-6)
     
     def drift( self, x, t ):
         obstacle_vector = x[0:2] - self.obstacle_position
@@ -197,6 +201,11 @@ class QuadrotorObstacleSafety(AffineDynamics, ScalarDynamics):
 
         return phi0
     
+    def eval_reciprocal_drift( self, x, t):
+        phi0 = self.drift(x, t)
+        hreciprocalfunc = self.eval_reciprocal(x, t)
+        return -phi0*(hreciprocalfunc)**2
+    
     def act(self, x, t):
         obstacle_vector = x[0:2] - self.obstacle_position
         orientation_vector = array([sin(x[2]), cos(x[2])])
@@ -209,8 +218,18 @@ class QuadrotorObstacleSafety(AffineDynamics, ScalarDynamics):
 
         return phi1
     
+    def eval_reciprocal_act( self, x, t):
+        phi1 = self.act(x, t)
+        hreciprocalfunc = self.eval_reciprocal(x, t)
+        return -phi1*(hreciprocalfunc)**2
     
-    def obstacle_cbf_params(self, x, t):
+    def eval_reciprocal_dot( self, x, u, t):
+        phi0r= self.eval_reciprocal_drift(x, t)
+        phi1r = self.eval_reciprocal_act(x, t)
+
+        return phi0r + dot(phi1r, u)
+    
+    def get_cbf_params(self, x, t):
         obstacle_vector = x[0:2] - self.obstacle_position
         orientation_vector = array([sin(x[2]), cos(x[2])])
         s = dot(orientation_vector, obstacle_vector)
@@ -236,4 +255,4 @@ class QuadrotorObstacleSafety(AffineDynamics, ScalarDynamics):
         phi0 = -phi0*1/(hfunc)**2
         phi0 += -self.gamma*hfunc
          
-        return -phi0, -phi1          
+        return phi0, phi1
