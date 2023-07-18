@@ -1,34 +1,32 @@
-from core.systems import PlanarQuadrotor
-from core.controllers import FBLinController, LQRController
+from src.quadrotor.dynamics.planar_quadrotor  import PlanarQuadrotor2D as PlanarQuadrotor
+from src.quadrotor.controllers.sqp_controller import SequentialQPController
+from src.quadrotor.handlers import virtualpositionCLF, orientationCLF
 
-from numpy import identity, linspace
+from numpy import identity, linspace, arctan, array, ones, zeros, diag
 from matplotlib.pyplot import subplot, plot, grid, legend, xlabel, ylabel, figure
 from numpy import array, dot, linspace
 
-def initializeSystem():# System Definitions
+from copy import deepcopy as copy
+
+
+def initializeSystemAndController(x_d, x_dd, freq, ts_qp):# System Definitions
     """
         Initialize true planar quadrotor parameters and estimates
     """
-    m = 1.5
-    g = 9.8
-    J = 1.3
-    m_true = 1.8
-    J_true = 1.1
+    m = 0.7
+    J = 0.4
+    m_true = 1.0
+    J_true = 0.5
 
     quad = PlanarQuadrotor(m, J)
     quad_true = PlanarQuadrotor(m_true, J_true)
-    ex_quad = PlanarQuadrotor.Extension(quad)
-    ex_quad_true = PlanarQuadrotor.Extension(quad_true)
-    ex_quad_output = PlanarQuadrotor.Output(ex_quad)
-    ex_quad_true_output = PlanarQuadrotor.Output(ex_quad_true)
 
-    Q = 200 * identity(8)
-    R = 1*identity(2)
-    # IMPORTANT: There is a key assumption here. The stabilizing controller knows the true system. It is an oracle.
-    lqr = LQRController.build(ex_quad_true_output, Q, R)
-    fb_lin_true = FBLinController(ex_quad_true_output, lqr)
+    vp_clf = virtualpositionCLF(quad_true, ts_qp=ts_qp, x_d=x_d, x_dd=x_dd, freq=freq, k=0.5, epsilon=0.7, eta=0.5)
+    Q = diag([1, 0.01])
+    affine_orientation = orientationCLF(copy(quad_true), 0, 1, 1, 10)
+    sqp_true = SequentialQPController(vp_clf, Q, affine_orientation)
 
-    return ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_output, fb_lin_true  
+    return quad, quad_true, sqp_true
 
 
 def simulateSafetyFilter(x_0, ex_quad_true, ex_quad, flt_true, flt_est):

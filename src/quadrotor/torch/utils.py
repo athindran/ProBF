@@ -1,5 +1,5 @@
 from core.controllers import FilterController
-from .handlers import SafetyCoordinateReduced
+from .handlers import SafetyCoordinateReduced, SafetyCoordinate
 
 
 def initializeSafetyFilter(ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_output, fb_lin):
@@ -20,8 +20,8 @@ def initializeSafetyFilter(ex_quad, ex_quad_true, ex_quad_output, ex_quad_true_o
     y_e = 0.6
     rad = 0.28
     
-    safety_est = SafetyCoordinateReduced( ex_quad, x_e, y_e, rad)
-    safety_true = SafetyCoordinateReduced( ex_quad_true, x_e, y_e, rad)
+    safety_est = SafetyCoordinate( ex_quad_output, x_e, y_e, rad)
+    safety_true = SafetyCoordinate( ex_quad_true_output, x_e, y_e, rad)
 
     # Alpha tuning very critical
     alpha = 10

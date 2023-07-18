@@ -59,17 +59,17 @@ def generateQuadPoints(x_0, num_episodes, ic_prec):
       Outputs:
           x_0s: Set of initial points corresponding to one for each episode.
     """
-    random_0 = uniform(1-ic_prec, 1+ic_prec, num_episodes)[:,np.newaxis]
-    random_1 = uniform(1-ic_prec, 1+ic_prec, num_episodes)[:,np.newaxis]
-    random_2 = np.ones((num_episodes,1))
-    random_3 = np.ones((num_episodes,1))
-    random_4 = np.ones((num_episodes,1))
-    random_5 = np.ones((num_episodes,1))
-    random_6 = np.ones((num_episodes,1))
-    random_7 = np.ones((num_episodes,1))
+    random_0 = uniform(-ic_prec, ic_prec, num_episodes)[:,np.newaxis]
+    random_1 = uniform(-ic_prec, ic_prec, num_episodes)[:,np.newaxis]
+    random_2 = np.zeros((num_episodes,1))
+    random_3 = np.zeros((num_episodes,1))
+    random_4 = np.zeros((num_episodes,1))
+    random_5 = np.zeros((num_episodes,1))
+    #random_6 = np.ones((num_episodes,1))
+    #random_7 = np.ones((num_episodes,1))
 
-    weights_all = np.concatenate((random_0,random_1,random_2,random_3,random_4,random_5,random_6,random_7), axis=1)
-    x_0s = x_0 * weights_all
+    weights_all = np.concatenate((random_0,random_1,random_2,random_3,random_4,random_5), axis=1)
+    x_0s = x_0 + weights_all
     return x_0s
 
 
