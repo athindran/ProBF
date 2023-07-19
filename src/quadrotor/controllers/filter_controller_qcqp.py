@@ -38,14 +38,13 @@ class FilterControllerQCQP(Controller):
         ud = self.desired_controller.process( self.desired_controller.eval(x, t ) )
         
         #return self.eval_novar(x, t, phi0, phi1, ud)
-
-        u = cp.Variable((4))
         sigma = self.sigma
         
         # If sigma is very small, there is no need to explicitly use the variance
-        #if(sigma<0.05):
-        #return self.eval_novar(x, t, phi0, phi1, uc)
-        
+        if(sigma<0.05):
+          return self.eval_novar(x, t, phi0, phi1, ud)
+
+        u = cp.Variable((4)) 
         # Constructing the matrices of the convex program
         deltaf = np.array([[vara[0],0,varab[0],0],[0,vara[1],varab[1],0],[varab[0],varab[1],varb[0],0],[0,0,0,0]])
         delta = scipy.linalg.sqrtm(deltaf)
