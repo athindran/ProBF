@@ -2,6 +2,7 @@ import numpy as np
 import os
 import pickle
 import sys
+import time
 
 from numpy import linspace, ones, array, zeros
 from numpy.random import seed
@@ -23,7 +24,8 @@ from src.quadrotor.handlers import CombinedController
 from src.quadrotor.torch.handlers import LearnedQuadSafety_gpy, ExactGPModel
 from src.plotting.plotting import plotQuadStatesv2, make_animation, plotQuadTrajectory
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 print("Device", device)
 
 def run_qualitative_evaluation(quad, quad_true, flt_est, flt_true, sqp_true, safety_learned, safety_est, 
@@ -51,15 +53,20 @@ def run_qualitative_evaluation(quad, quad_true, flt_est, flt_true, sqp_true, saf
       ax = f.gca()
       savename = figure_dir + "/learned_pp_run{}.png".format(str(i))
 
-      for z_index, sigma in enumerate([0, 0.5, 1.0]):
-        flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=sigma)
+      for z_index, delta in enumerate([0, 0.5, 1.0, 2.0]):
+        flt_learned = FilterControllerQCQP( safety_learned, sqp_true, delta=delta)
+        
+        start_time = time.time()
         qp_data_post = quad_true.simulate(x_0_test, flt_learned, ts_post_qp)
+        end_time = time.time()
+        print('Average control cycle time: ', (end_time-start_time)/(tend*freq))
+
         xs_post_qp, _ = qp_data_post   
         
         # Final Result
-        plot(xs_post_qp[:, 0], xs_post_qp[:, 1], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(sigma), alpha=(z_index+1)/4)
+        plot(xs_post_qp[:, 0], xs_post_qp[:, 1], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(delta), alpha=(z_index+1)/5)
 
-        pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}_sigma{}.pkl".format(str(i), str(sigma)) , 'wb') )  
+        pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}_delta{}.pkl".format(str(i), str(delta)) , 'wb') )  
       plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'r', label='Nominal Model')
       plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'g', label='True model')
       # Create a Rectangle patch
@@ -89,7 +96,7 @@ def run_full_evaluation(rnd_seed, quad, quad_true, flt_est, flt_true, sqp_true, 
   # test for 10 different random points
   num_violations = 0
 
-  flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=1.0)
+  flt_learned = FilterControllerQCQP( safety_learned, sqp_true, delta=1.0)
   
   trueest_violations = 0
   truetrue_violations = 0
@@ -224,7 +231,7 @@ def run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
   
         drift_inputs_long, act_inputs_long, us_long, residuals_long = data
 
-        downsample_rate = 10
+        downsample_rate = 8
         drift_inputs, _, us, residuals = downsample([drift_inputs_long, act_inputs_long, us_long, residuals_long], downsample_rate)
     
         normalized_data, preprocess_mean, preprocess_std = standardize(drift_inputs)
@@ -247,10 +254,10 @@ def run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
 
         if i >=5:
           adam_lr = 0.006
-          training_iter = 300
+          training_iter = 200
         else:
           adam_lr = 0.009
-          training_iter = 300
+          training_iter = 200
 
         # load to gpu if possible
         if device!="cpu":
@@ -306,7 +313,7 @@ def run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
         safety_learned.preprocess_std = torch.from_numpy( preprocess_std[0] )
     
         # Controller Update
-        flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=0.0)
+        flt_learned = FilterControllerQCQP( safety_learned, sqp_true, delta=0.0)
     
     num_violations = None
     if run_quant_evaluation:
@@ -324,7 +331,7 @@ def run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, save_dir, run_q
       run_qualitative_evaluation(quad=quad, quad_true=quad_true, flt_est= flt_est, flt_true=flt_true, sqp_true=sqp_true, 
                                  safety_learned=safety_learned, safety_true=safety_true, safety_est=safety_est, x_d=x_d, figure_dir=figure_qual_dir)
 
-    flt_learned = FilterControllerQCQP( safety_learned, sqp_true, sigma=1.0)
+    flt_learned = FilterControllerQCQP( safety_learned, sqp_true, delta=0.5)
     return num_violations, flt_learned
 
 def test_quadrotor_cbf(rnd_seed, work_dir, flt_learned=None):
@@ -386,17 +393,17 @@ def test_quadrotor_cbf(rnd_seed, work_dir, flt_learned=None):
             truetrue_violations += 1
 
         if(j==0):
-            #ax1.plot(xs_qp_nocbf[:, 0], xs_qp_nocbf[:, 1], 'k--', linewidth=1, label='No CBF')
-            ax1.plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'g', linewidth=1, label='True-True')
-            ax1.plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'r', linewidth=1, label='True-Est')
+            ax1.plot(xs_qp_nocbf[:, 0], xs_qp_nocbf[:, 1], 'k--', linewidth=1, label='No CBF')
+            ax1.plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'b--', linewidth=1, label='True model')
+            ax1.plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'g', linewidth=1, label='Nominal model')
         else:
-            #ax1.plot(xs_qp_nocbf[:, 0], xs_qp_nocbf[:, 1], 'k--', linewidth=1)
-            ax1.plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'g', linewidth=1)
-            ax1.plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'r', linewidth=1)
+            ax1.plot(xs_qp_nocbf[:, 0], xs_qp_nocbf[:, 1], 'k--', linewidth=1)
+            ax1.plot(xs_qp_truetrue[:, 0], xs_qp_truetrue[:, 1], 'b--', linewidth=1)
+            ax1.plot(xs_qp_trueest[:, 0], xs_qp_trueest[:, 1], 'g', linewidth=1)
 
         fig2, axes2 = plt.subplots(2, 3, figsize=(13,8))
-        plotQuadStatesv2(axes2, ts_qp, xs_qp_trueest, us_qp_trueest, hs_qp_trueest, hdots_qp_trueest, label='TrueEst', clr='r')
-        plotQuadStatesv2(axes2, ts_qp, xs_qp_truetrue, us_qp_truetrue, hs_qp_truetrue, hdots_qp_truetrue, label='TrueTrue', clr='g')
+        plotQuadStatesv2(axes2, ts_qp, xs_qp_trueest, us_qp_trueest, hs_qp_trueest, hdots_qp_trueest, label='Nominal model', clr='g')
+        plotQuadStatesv2(axes2, ts_qp, xs_qp_truetrue, us_qp_truetrue, hs_qp_truetrue, hdots_qp_truetrue, label='True model', clr='b--')
         fig2.savefig(os.path.join(work_dir, str(rnd_seed) + '_' + 'run' + str(j) + 'quadrotor_states.png'))
         plt.close()
 
@@ -406,8 +413,8 @@ def test_quadrotor_cbf(rnd_seed, work_dir, flt_learned=None):
     circle = Circle((obstacle_position[0], obstacle_position[1]), np.sqrt(obstacle_rad2), color="y")
     ax1.add_patch(circle)
     ax1.plot(x_d[0, :], x_d[1, :], 'k*', label='Desired')
-    ax1.set_xticks([-2, obstacle_position[0], x_d[0, 0], 13])
-    ax1.set_yticks([-2, obstacle_position[1], x_d[1, 0], 13])
+    ax1.set_xticks([-2.0, obstacle_position[0], x_d[0, 0], 13.0])
+    ax1.set_yticks([-2.0, obstacle_position[1], x_d[1, 0], 13.0])
     ax1.set_ylabel('Y position')
     ax1.set_xlabel('X position')
     ax1.set_xlim([-2, 13])
@@ -423,11 +430,11 @@ def test_quadrotor_cbf(rnd_seed, work_dir, flt_learned=None):
     print('True Est violations', trueest_violations)
     
 if __name__=='__main__':
-  rnd_seed_list = [345]
-  #rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+  #rnd_seed_list = [345, 123, 678, 567]
+  rnd_seed_list = [ 123, 234, 345, 456, 678]
   
   # Episodic Learning Setup
-  experiment_name = "check_base_quad"
+  experiment_name = "check_qcqp_allseeds_4"
 
   parent_path = "/scratch/gpfs/arkumar/ProBF/"
   parent_path = os.path.join(parent_path, experiment_name)
@@ -439,8 +446,7 @@ if __name__=='__main__':
     os.mkdir( os.path.join(parent_path, "exps") )
     os.mkdir( os.path.join(parent_path, "models") )
  
-  #test_quadrotor_cbf(123, baseline_dir)
-
+  
   figure_path = os.path.join(parent_path, "exps/quad_modular_gp/")
   model_path = os.path.join(parent_path, "models/quad_modular_gp/")
 
@@ -460,13 +466,16 @@ if __name__=='__main__':
     if not os.path.isdir(dirs):
       os.mkdir(dirs) 
   
-    #print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
-    #sys.stdout = print_logger
-    #sys.stderr = print_logger
+    print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
+    sys.stdout = print_logger
+    sys.stderr = print_logger
 
     num_violations, flt_learned = run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=True)
     num_violations_list.append(num_violations)
-  test_quadrotor_cbf(123, baseline_dir, flt_learned)
-  #print_logger.reset(os.path.join(figure_path, 'log.txt'))
-  #print_logger.reset(os.path.join(figure_path, 'log.txt')) 
+
+  print_logger.reset(os.path.join(figure_path, 'log.txt'))
+  print_logger.reset(os.path.join(figure_path, 'log.txt')) 
+  #test_quadrotor_cbf(479, baseline_dir, flt_learned)
   print("num_violations_list: ", num_violations_list)
+
+  test_quadrotor_cbf(56, baseline_dir, flt_learned)
