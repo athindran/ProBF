@@ -17,8 +17,8 @@ class ExactGPModel(gpytorch.models.ExactGP):
         active_dims_u2 = np.array([1])
         active_dims_rest = np.array([2, 3, 4, 5, 6, 7])
 
-        ku1 = gpytorch.kernels.LinearKernel(active_dims=active_dims_u1)
-        ku2 = gpytorch.kernels.LinearKernel(active_dims=active_dims_u2)
+        ku1 = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel(active_dims=active_dims_u1))
+        ku2 = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel(active_dims=active_dims_u2))
 
         ka1 = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dims_rest, ard_num_dims=6))
         ka2 = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(active_dims=active_dims_rest, ard_num_dims=6))
@@ -125,11 +125,11 @@ class LearnedQuadSafety_gpy(LearnedAffineDynamics):
         phi0_nominal, phi1_nominal = self.dynamics.get_cbf_params(x, t)
 
         hfunc = self.dynamics.eval(x, t)
-        phi0_learned = -drift_mean.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-8)
-        phi1_learned = -act_mean.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-8)
-        phi0_variance = drift_variance.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-8)
+        phi0_learned = -drift_mean.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-6)
+        phi1_learned = -act_mean.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-6)
+        phi0_variance = drift_variance.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-6)
         cross_variance = varab.detach().cpu().numpy().ravel()
-        phi1_variance = act_variance.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-8)
+        phi1_variance = act_variance.detach().cpu().numpy().ravel()/(hfunc**2 + 1e-6)
 
         return [phi0_nominal + phi0_learned, phi0_variance, cross_variance, phi1_nominal + phi1_learned, phi1_variance]
 

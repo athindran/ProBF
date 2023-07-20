@@ -20,8 +20,8 @@ def initializeSystemAndController(x_d, x_dd, freq, ts_qp):# System Definitions
     quad_true = PlanarQuadrotor(m_true, J_true)
 
     vp_clf = virtualpositionCLF(quad_true, ts_qp=ts_qp, x_d=x_d, x_dd=x_dd, freq=freq, k=0.5, epsilon=0.7, eta=0.5)
-    Q = diag([1, 0.01])
-    affine_orientation = orientationCLF(copy(quad_true), 0, 1, 1, 12)
+    Q = diag([0.7, 0.01])
+    affine_orientation = orientationCLF(copy(quad_true), 0, 1, 1, 20)
     sqp_true = SequentialQPController(vp_clf, Q, affine_orientation)
 
     return quad, quad_true, sqp_true

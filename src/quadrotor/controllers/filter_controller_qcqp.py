@@ -8,11 +8,11 @@ from core.controllers import Controller
 class FilterControllerQCQP(Controller):
     """Class for solving the ProBF-QCQP with two controller inputs."""
 
-    def __init__(self, affine_dynamics, desired_controller, sigma = 0.8):
+    def __init__(self, affine_dynamics, desired_controller, delta = 0.8):
         Controller.__init__(self, affine_dynamics)
         self.affine_dynamics = affine_dynamics
         self.desired_controller = desired_controller
-        self.sigma = sigma
+        self.delta = delta
         self.thrust_limit = 12
         self.moment_limit = 1
         
@@ -38,36 +38,36 @@ class FilterControllerQCQP(Controller):
         ud = self.desired_controller.process( self.desired_controller.eval(x, t ) )
         
         #return self.eval_novar(x, t, phi0, phi1, ud)
-        sigma = self.sigma
+        delta = self.delta
         
         # If sigma is very small, there is no need to explicitly use the variance
-        if(sigma<0.05):
+        if(delta<0.05):
           return self.eval_novar(x, t, phi0, phi1, ud)
 
         u = cp.Variable((4)) 
         # Constructing the matrices of the convex program
-        deltaf = np.array([[vara[0],0,varab[0],0],[0,vara[1],varab[1],0],[varab[0],varab[1],varb[0],0],[0,0,0,0]])
-        delta = scipy.linalg.sqrtm(deltaf)
+        varf = np.array([[vara[0],0,varab[0],0],[0,vara[1],varab[1],0],[varab[0],varab[1],varb[0],0],[0,0,0,0]])
+        varm = scipy.linalg.sqrtm(varf)
         cu = np.array([[0],[0],[0],[1]])
-        ## NOT FIXED FOR CONVENTION CHANGE YET
+
         # Try to solve the convex program. If infeasible, reduce sigma.
         prob = cp.Problem(cp.Minimize(cp.square(u[0])+cp.square(u[1])-2*u[0]*ud[0]-2*u[1]*ud[1]),
-                          [phi1[0]*u[0]+phi1[1]*u[1]+phi0[0]+sigma*u[3]<=0,cp.norm(delta@u)<=cu.T@u,u[3]>=0,u[2]-1==0])
+                          [phi1[0]*u[0]+phi1[1]*u[1]+phi0[0]+delta*u[3]<=0,cp.norm(varm@u)<=cu.T@u,u[3]>=0,u[2]-1==0])
         
         try:
           prob.solve()
         except SolverError:
           pass  
 
-        if prob.status not in ["optimal","optimal_inaccurate"]:
+        if (prob.status not in ["optimal","optimal_inaccurate"]):
           print(prob.status)  
           count = 0
-          while count<3 and prob.status not in ["optimal","optimal_inaccurate"]:
-            sigmahigh = sigma
+          while count<3 and (prob.status not in ["optimal","optimal_inaccurate"]):
             count = count+1
             u = cp.Variable((4))
-            sigma = sigma/2.0  
-            prob = cp.Problem(cp.Minimize(cp.square(u[0])+cp.square(u[1])-2*u[0]*ud[0]-2*u[1]*ud[1]),[phi1[0]*u[0]+phi1[1]*u[1]+phi0[0]-sigma*u[3]>=0,cp.norm(delta@u)<=cu.T@u,u[3]>=0,u[2]-1==0])
+            delta = delta/2.0  
+            prob = cp.Problem(cp.Minimize(cp.square(u[0])+cp.square(u[1])-2*u[0]*ud[0]-2*u[1]*ud[1]),
+                          [phi1[0]*u[0]+phi1[1]*u[1]+phi0[0]+delta*u[3]<=0,cp.norm(varm@u)<=cu.T@u,u[3]>=0,u[2]-1==0])
             try:
               prob.solve()
             except SolverError:
@@ -78,12 +78,10 @@ class FilterControllerQCQP(Controller):
           else:
             ucurr = ud
             #ucurr = self.eval_novar(x, t, phi0, phi1, uc)
-          print("Sigma reduced to:", sigma)
+          print("Delta reduced to:", delta)
         else:
           ucurr = [u[0].value, u[1].value]
         
-        self.sigma = sigma
-
         ufiltered = self.desired_controller.process(np.array([ucurr[0],ucurr[1]])).T
         ufiltered[0] = np.clip(ufiltered[0], 0, self.thrust_limit)
         ufiltered[1] = np.clip(ufiltered[1], -1*self.moment_limit, self.moment_limit)
