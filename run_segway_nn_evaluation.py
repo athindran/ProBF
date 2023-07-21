@@ -178,8 +178,7 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
   d_act_in_seg = 8
   d_hidden_seg= 200
   d_out_seg = 1
-  us_std = 0.05
-  res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 1, d_out_seg, us_std)
+  res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 1, d_out_seg)
   safety_learned = LearnedSegwaySafetyAAR_NN(safety_est, res_model_seg)
 
   # Episodic Parameters
@@ -236,15 +235,14 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
     
     print("Input mean",safety_learned.res_model.input_mean)
 
-    res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 1, d_out_seg, us_std)
+    res_model_seg = KerasResidualScalarAffineModel(d_drift_in_seg, d_act_in_seg, d_hidden_seg, 1, d_out_seg)
     safety_learned = LearnedSegwaySafetyAAR_NN(safety_est, res_model_seg)
     
     safety_learned.res_model.input_mean = np.zeros((8,))
     safety_learned.res_model.input_std = np.ones((8,))
-    safety_learned.res_model.usstd = 1.0
 
     #fit residual model on data
-    safety_learned.fit(data,batch_size=16,num_epochs=10,validation_split=0.1)
+    safety_learned.fit(data, 1, num_epochs=10, validation_split=0.1)
 
     # Controller Update
     phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
@@ -271,47 +269,48 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
   return num_violations
 
 
-#rnd_seed_list = [123]
-rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
-# Episodic Learning Setup
+if __name__=='__main__':
+  #rnd_seed_list = [123]
+  rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
+  # Episodic Learning Setup
 
-#experiment_name = "reproduce_seg_nn_all_seeds"
-experiment_name = "check_run"
+  #experiment_name = "reproduce_seg_nn_all_seeds"
+  experiment_name = "debug_again"
 
-parent_path = "/scratch/gpfs/arkumar/ProBF/"
-parent_path = os.path.join(parent_path, experiment_name)
+  parent_path = "/scratch/gpfs/arkumar/ProBF/"
+  parent_path = os.path.join(parent_path, experiment_name)
 
-if not os.path.isdir(parent_path):
-  os.mkdir(parent_path)
-  os.mkdir( os.path.join(parent_path, "exps") )
-  os.mkdir( os.path.join(parent_path, "models") )
+  if not os.path.isdir(parent_path):
+    os.mkdir(parent_path)
+    os.mkdir( os.path.join(parent_path, "exps") )
+    os.mkdir( os.path.join(parent_path, "models") )
 
-figure_path = os.path.join(parent_path, "exps/segway_modular_nn/")
-model_path = os.path.join(parent_path, "models/segway_modular_nn/")
+  figure_path = os.path.join(parent_path, "exps/segway_modular_nn/")
+  model_path = os.path.join(parent_path, "models/segway_modular_nn/")
 
-if not os.path.isdir(figure_path):
-  os.mkdir(figure_path)
+  if not os.path.isdir(figure_path):
+    os.mkdir(figure_path)
 
-if not os.path.isdir(model_path):
-  os.mkdir(model_path)
+  if not os.path.isdir(model_path):
+    os.mkdir(model_path)
 
-num_violations_list = []
-num_episodes = 5
-num_tests = 10
-print_logger = None
-for rnd_seed in rnd_seed_list:
-  dirs = figure_path + str(rnd_seed) + "/"
+  num_violations_list = []
+  num_episodes = 5
+  num_tests = 10
+  print_logger = None
+  for rnd_seed in rnd_seed_list:
+    dirs = figure_path + str(rnd_seed) + "/"
 
-  if not os.path.isdir(dirs):
+    if not os.path.isdir(dirs):
       os.mkdir(dirs) 
   
-  print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
-  sys.stdout = print_logger
-  sys.stderr = print_logger
+    print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
+    sys.stdout = print_logger
+    sys.stderr = print_logger
 
-  num_violations = run_segway_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
-  num_violations_list.append(num_violations)
+    num_violations = run_segway_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
+    num_violations_list.append(num_violations)
 
-print_logger.reset(os.path.join(figure_path, 'log.txt'))
-print_logger.reset(os.path.join(figure_path, 'log.txt')) 
-print("num_violations_list: ", num_violations_list)
+  print_logger.reset(os.path.join(figure_path, 'log.txt'))
+  print_logger.reset(os.path.join(figure_path, 'log.txt')) 
+  print("num_violations_list: ", num_violations_list)
