@@ -61,7 +61,7 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
     def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_scale, optimizer='sgd', loss='mean_absolute_error'):
         drift_model = Sequential()
         drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
-        drift_model.add(Dense(d_hidden, input_shape=(d_hidden,), activation='relu'))
+        #drift_model.add(Dense(d_hidden, input_shape=(d_hidden,), activation='relu'))
         drift_model.add(Dense(d_out))
         self.drift_model = drift_model
         self.us_scale = us_scale
@@ -71,7 +71,7 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
 
         act_model = Sequential()
         act_model.add(Dense(d_hidden, input_shape=(d_act_in,), activation='relu'))
-        act_model.add(Dense(d_hidden, input_shape=(d_hidden,), activation='relu'))
+        #act_model.add(Dense(d_hidden, input_shape=(d_hidden,), activation='relu'))
         act_model.add(Dense(d_out * m))
         #print("Shape", d_out*m)
         act_model.add(Reshape((d_out, m)))
@@ -81,7 +81,7 @@ class KerasResidualScalarAffineModel(KerasResidualAffineModel):
         act_residuals = self.act_model(act_inputs)
 
         us = Input((m,))
-        residuals = Add()([drift_residuals, Dot([2, 1])([act_residuals, Lambda(lambda x: x/self.us_scale)(us) ])])
+        residuals = Add()([drift_residuals, Dot([2, 1])([act_residuals, us ])])
         model = Model([drift_inputs, act_inputs, us], residuals)
         model.compile(optimizer, loss)
         self.model = model

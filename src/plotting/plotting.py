@@ -17,7 +17,7 @@ def make_animation(xs_array, x_d, obstacle_position, obstacle_rad2, fig_folder='
   if not os.path.isdir(fig_folder):
       os.mkdir(fig_folder)
 
-  frame_skip = 20
+  frame_skip = 10
   for i in range(0, xs_array.shape[0], frame_skip):
     quadrotor_position = xs_array[i][0:2]
     quadrotor_orientation = xs_array[i][2] 
@@ -27,7 +27,7 @@ def make_animation(xs_array, x_d, obstacle_position, obstacle_rad2, fig_folder='
     quadrotor_left_y = quadrotor_position[1] + length*np.sin(quadrotor_orientation)
     quadrotor_right_x = quadrotor_position[0] + length*np.cos(quadrotor_orientation)
     quadrotor_right_y = quadrotor_position[1] - length*np.sin(quadrotor_orientation)
-    f = plt.figure(figsize=(6, 4))
+    f = plt.figure(figsize=(5, 4))
     plt.plot(x_d[0, :], x_d[1, :], 'k*', label='Desired')
     plt.plot([quadrotor_left_x, quadrotor_right_x], [quadrotor_left_y, quadrotor_right_y], 'x-')
     circle = Circle((obstacle_position[0], obstacle_position[1]), np.sqrt(obstacle_rad2) - 1.0, color="y")
