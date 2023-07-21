@@ -17,7 +17,7 @@ def make_animation(xs_array, x_d, obstacle_position, obstacle_rad2, fig_folder='
   if not os.path.isdir(fig_folder):
       os.mkdir(fig_folder)
 
-  frame_skip = 10
+  frame_skip = 20
   for i in range(0, xs_array.shape[0], frame_skip):
     quadrotor_position = xs_array[i][0:2]
     quadrotor_orientation = xs_array[i][2] 
