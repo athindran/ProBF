@@ -24,8 +24,8 @@ from src.quadrotor.handlers import CombinedController
 from src.quadrotor.torch.handlers import LearnedQuadSafety_gpy, ExactGPModel
 from src.plotting.plotting import plotQuadStatesv2, make_animation, plotQuadTrajectory
 
-#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = 'cpu'
 print("Device", device)
 
 def run_qualitative_evaluation(quad, quad_true, flt_est, flt_true, sqp_true, safety_learned, safety_est, 
@@ -472,7 +472,7 @@ if __name__=='__main__':
     sys.stdout = print_logger
     sys.stderr = print_logger
 
-    num_violations, flt_learned = run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
+    num_violations, flt_learned = run_quadrotor_gp_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=False, run_qual_evaluation=True)
     num_violations_list.append(num_violations)
 
   print_logger.reset(os.path.join(figure_path, 'log.txt'))

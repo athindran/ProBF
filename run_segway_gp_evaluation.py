@@ -9,7 +9,8 @@ from numpy.random import seed
 import torch
 import gpytorch
 
-from core.controllers import FilterController, FilterControllerVar
+from core.controllers import FilterController
+from src.segway.controllers.filter_controller_qcqp import FilterControllerQCQP
 
 from src.segway.utils import initializeSystem, simulateSafetyFilter
 from src.segway.torch.utils import initializeSafetyFilter
@@ -24,8 +25,8 @@ from matplotlib import pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.pyplot import legend, plot, title, xlabel, ylabel
 
-#device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#device = 'cpu'
 print("Device", device)
 
 def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned,
@@ -59,16 +60,16 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       plot(xs_qp_trueest[:, 1], xs_qp_trueest[:, 3], 'g', linewidth=1.5, label='Nominal model')
       savename = figure_dir + "/learned_pp_run{}.png".format(str(i))
 
-      for z_index, sigma in enumerate([0, 0.5, 1.0, 1.5]):
+      for z_index, delta in enumerate([0, 0.5, 1.0, 1.5]):
         x_0 = x_0s_test[i, :]
-        flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma)
+        flt_learned = FilterControllerQCQP( seg_est, phi_0_learned, pd, delta)
         qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
         xs_post_qp, _ = qp_data_post   
         
         # Final Result
-        plot(xs_post_qp[:, 1], xs_post_qp[:, 3], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(sigma), alpha=(z_index+1)/4)
+        plot(xs_post_qp[:, 1], xs_post_qp[:, 3], 'b', linewidth=1.5, label='ProBF(GP)' + '$\\delta=$' + str(delta), alpha=(z_index+1)/4)
 
-        pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}_sigma{}.pkl".format(str(i), str(sigma)) , 'wb') )  
+        pickle.dump( xs_post_qp, open( figure_dir + "/learned_pp_run{}_delta{}.pkl".format(str(i), str(delta)) , 'wb') )  
       
       # Create a Rectangle patch
       rect = patches.Rectangle((0.15, 0.075), 0.1, 0.025, linewidth=1, edgecolor='k', facecolor='b', alpha=0.3)
@@ -83,7 +84,7 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       fig.savefig(savename, bbox_inches='tight')
 
 def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, 
-                        safety_true, x_0s_test, rnd_seed, num_episodes=5, num_tests=10, sigma=0.0, figure_dir="./"):                       
+                        safety_true, x_0s_test, rnd_seed, num_episodes=5, num_tests=10, delta=0.0, figure_dir="./"):                       
   """
     Evaluate trained model and plot various comparisons
   """
@@ -99,9 +100,9 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
   xs_qp_trueest, us_qp_trueest = qp_trueest_data
   xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
 
-  phi_0_learned = lambda x, t: safety_learned.drift_learned( x, t )   
+  phi_0_learned = lambda x, t: safety_learned.drift_act_learned( x, t )   
   #phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
-  flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma)
+  flt_learned = FilterControllerQCQP( seg_est, phi_0_learned, pd, delta)
 
   freq = 500 # Hz 
   tend = 3
@@ -143,14 +144,14 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
     theta_bound_l = ( safety_true.theta_e - safety_true.angle_max ) * ones( size( ts_post_qp ) )
 
     # Plotting
-    savename = figure_dir+"/learned_filter_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir+"/learned_filter_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
     plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, 
                     us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
                         drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, 
                             theta_bound_u, theta_bound_l, savename)
     
     # Learned CBF safety filter
-    savename = figure_dir + "/learned_h_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir + "/learned_h_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
     plotLearnedCBF(ts_qp, hs_qp_trueest, np.array( hs_all ).ravel(), ts_post_qp, hs_post_qp, ebs, num_episodes, savename)
     
     # Phase Plane Plotting
@@ -159,7 +160,7 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
     theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
     ebs = int(len(state_data[0])/num_episodes)
     
-    savename = figure_dir + "/learned_pp_seed{}_run{}_sigma{}.png".format(str(rnd_seed), str(i), str(sigma))
+    savename = figure_dir + "/learned_pp_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
     plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, xs_post_qp, ebs, num_episodes, savename)
 
   # record violations
@@ -167,7 +168,7 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
   return num_violations
 
 
-def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_tests=10, sigma_train=0.0, sigma_val=[1.0],
+def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_tests=10, delta_train=0.0, delta_val=[1.0],
                              run_quant_evaluation=True, run_qual_evaluation=False):
   """
   Function to run GP training with segway.
@@ -176,7 +177,6 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
     rnd_seed: Seed that controlls the sequence of random inputs from region used for training.
     num_episodes: No. of episodes to train
   """
-  from core.controllers import FilterControllerVar
   seed(rnd_seed)
   torch.manual_seed(rnd_seed)
 
@@ -410,7 +410,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       # Controller Update
       phi_0_learned = safety_learned.drift_act_learned 
       #phi_1_learned = safety_learned.act_learned
-      flt_learned = FilterControllerVar( seg_est, phi_0_learned, pd, sigma=sigma_train)
+      flt_learned = FilterControllerQCQP( seg_est, phi_0_learned, pd, delta=delta_train)
       
   print(residual_model.covar_module.kernels[0].kernels[1].outputscale)
   print(residual_model.covar_module.kernels[1].outputscale)
@@ -432,10 +432,10 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
     #                                       x_0s_test, num_tests, 0.5, figure_dir)
     #print("viol-0.5: ", num_violations_b)
     
-    for sigma_v in sigma_val:
+    for delta_v in delta_val:
       num_violations_c = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
                                            safety_learned, safety_est, safety_true, 
-                                           x_0s_test, rnd_seed, num_episodes, num_tests, sigma_v, 
+                                           x_0s_test, rnd_seed, num_episodes, num_tests, delta_v, 
                                            figure_quant_dir)
       num_violations.append( num_violations_c )
     print("viol: ", num_violations)
@@ -451,13 +451,13 @@ def run_validation():
   #rnd_seed_list = [124, 235]  
   rnd_seed_list = [ 124, 235, 346, 457, 568, 679, 780, 891, 902, 13]
   
-  sigma_train_list = np.array([0, 0.5, 1.0])
-  sigma_val_list = [[0, 0.5, 1.0, 1.5],
+  delta_train_list = np.array([0, 0.5, 1.0])
+  delta_val_list = [[0, 0.5, 1.0, 1.5],
                       [0.5, 1.0, 1.5, 2.0],
                       [0.5, 1.0, 1.5, 2.0]]
   
   # Episodic Learning Setup
-  num_violations_array= np.zeros((len(rnd_seed_list), len(sigma_train_list), len(sigma_val_list[0])))
+  num_violations_array= np.zeros((len(rnd_seed_list), len(delta_train_list), len(delta_val_list[0])))
 
   num_episodes = 5
 
@@ -494,27 +494,27 @@ def run_validation():
     if not os.path.isdir(model_dirs):    
       os.mkdir(model_dirs)
 
-    for sigma_index, sigma_train in enumerate(sigma_train_list):
-      print("Sigma train", sigma_train)
-      print("Sigma tests", sigma_val_list[sigma_index])
+    for delta_index, delta_train in enumerate(delta_train_list):
+      print("delta train", delta_train)
+      print("delta tests", delta_val_list[delta_index])
       
       print_logger.reset( os.path.join(figure_dirs, 'log.txt') )
 
       num_violations = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, 
-                                                num_tests=10, sigma_train=sigma_train, sigma_val=sigma_val_list[sigma_index]
+                                                num_tests=10, delta_train=delta_train, delta_val=delta_val_list[delta_index]
                                                 ,run_quant_evaluation=True, run_qual_evaluation=True)
       
       print_logger.reset( os.path.join(figure_path, 'log.txt') )
 
       print("No. of violations", num_violations)
-      num_violations_array[rnd_idx, sigma_index, :] = np.array(num_violations)
+      num_violations_array[rnd_idx, delta_index, :] = np.array(num_violations)
   print("num_violations_array: ", num_violations_array)
 
-  for sigmatrain_index, sigma_train in enumerate(sigma_train_list):
-    for sigmatest_index, sigma_test in enumerate(sigma_val_list[sigmatrain_index]):
-      print("Sigmatrain, Sigmatest", sigma_train, sigma_test)
-      print("Average violations", np.mean(num_violations_array[:, sigmatrain_index, sigmatest_index]))
-      print("Std violations", np.std(num_violations_array[:, sigmatrain_index, sigmatest_index]))
+  for deltatrain_index, delta_train in enumerate(delta_train_list):
+    for deltatest_index, delta_test in enumerate(delta_val_list[deltatrain_index]):
+      print("deltatrain, deltatest", delta_train, delta_test)
+      print("Average violations", np.mean(num_violations_array[:, deltatrain_index, deltatest_index]))
+      print("Std violations", np.std(num_violations_array[:, deltatrain_index, deltatest_index]))
 
 def run_testing():
   #rnd_seed_list = [123]  
@@ -524,7 +524,7 @@ def run_testing():
   num_episodes = 5
 
   #experiment_name = "runall_quant_reproduce_allseeds"
-  experiment_name = "check_run"
+  experiment_name = "do_final_run_again"
 
   parent_path = "/scratch/gpfs/arkumar/ProBF/"
   parent_path = os.path.join(parent_path, experiment_name)
@@ -558,7 +558,7 @@ def run_testing():
     sys.stderr = print_logger 
 
     num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, 
-                                                num_tests=2, sigma_train=0.0, sigma_val=[1.0], run_quant_evaluation=False, run_qual_evaluation=True)
+                                                num_tests=10, delta_train=0.5, delta_val=[1.0], run_quant_evaluation=True, run_qual_evaluation=False)
     print("No. of violations", num_violations_c)
     num_violations_list.append(num_violations_c)
 
@@ -567,5 +567,4 @@ def run_testing():
   print("num_violations_list: ", num_violations_list)
 
 if __name__=='__main__':
-  #run_validation()
   run_testing()

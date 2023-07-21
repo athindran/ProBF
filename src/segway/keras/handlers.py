@@ -72,12 +72,12 @@ class LearnedSegwaySafetyAAR_NN(LearnedAffineDynamics):
 
 # Keras Residual Scalar Affine Model Definition
 class KerasResidualScalarAffineModel(ResidualAffineModel):
-    def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_std, optimizer='sgd', loss='mean_absolute_error'):
+    def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_scale=1, optimizer='sgd', loss='mean_absolute_error'):
         drift_model = Sequential()
         drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
         drift_model.add(Dense(d_out))
         self.drift_model = drift_model
-        self.us_std = us_std
+        self.us_scale = us_scale
 
         drift_inputs = Input((d_drift_in,))
         drift_residuals = self.drift_model(drift_inputs)
@@ -92,7 +92,7 @@ class KerasResidualScalarAffineModel(ResidualAffineModel):
         act_residuals = self.act_model(act_inputs)
 
         us = Input((m,))
-        residuals = Add()([drift_residuals, Dot([2, 1])([act_residuals, Lambda(lambda x: x/self.us_std)(us) ])])
+        residuals = Add()([drift_residuals, Dot([2, 1])([act_residuals, Lambda(lambda x: x/self.us_scale)(us) ])])
         model = Model([drift_inputs, act_inputs, us], residuals)
         model.compile(optimizer, loss)
         self.model = model
@@ -100,12 +100,12 @@ class KerasResidualScalarAffineModel(ResidualAffineModel):
         self.input_std = None
 
     def eval_drift(self, drift_input):
-        prediction = self.drift_model(array([(drift_input-self.input_mean)/self.input_std]), training=False).numpy()
+        prediction = self.drift_model(array([drift_input]), training=False).numpy()
         return prediction[0][0]
 
     def eval_act(self, act_input):
-        prediction = self.act_model(array([(act_input-self.input_mean)/self.input_std]), training=False).numpy()
-        return prediction[0][0]/self.us_std
+        prediction = self.act_model(array([act_input]), training=False).numpy()
+        return prediction[0][0]
     
     def shuffle(self, drift_inputs, act_inputs, us, residuals):
         perm = permutation(len(residuals))
