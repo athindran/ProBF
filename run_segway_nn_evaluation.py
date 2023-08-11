@@ -171,7 +171,7 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
   seg_est, seg_true, _, _, pd = initializeSystem()
   safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(seg_est, seg_true, pd)
 
-  alpha = 10
+  alpha = 1
   comp_safety = lambda r: alpha * r
   
   d_drift_in_seg = 8
