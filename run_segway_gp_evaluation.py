@@ -184,7 +184,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
   seg_est, seg_true, _, _, pd = initializeSystem()
   safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(seg_est, seg_true, pd)
   
-  alpha = 10
+  alpha = 20
   comparison_safety = lambda r: alpha * r
   safety_learned = LearnedSegwaySafetyAAR_gpytorch(safety_est, device=device)
 
@@ -517,14 +517,14 @@ def run_validation():
       print("Std violations", np.std(num_violations_array[:, deltatrain_index, deltatest_index]))
 
 def run_testing():
-  #rnd_seed_list = [123]  
+  #rnd_seed_list = [123, 234]  
   rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12 ]
   # Episodic Learning Setup
   num_violations_list = []
   num_episodes = 5
 
   #experiment_name = "runall_quant_reproduce_allseeds"
-  experiment_name = "do_final_run_again"
+  experiment_name = "increase_alpha_helps"
 
   parent_path = "/scratch/gpfs/arkumar/ProBF/"
   parent_path = os.path.join(parent_path, experiment_name)
@@ -558,7 +558,7 @@ def run_testing():
     sys.stderr = print_logger 
 
     num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, 
-                                                num_tests=10, delta_train=0.5, delta_val=[1.0], run_quant_evaluation=True, run_qual_evaluation=False)
+                                                num_tests=10, delta_train=0.0, delta_val=[1.0], run_quant_evaluation=True, run_qual_evaluation=True)
     print("No. of violations", num_violations_c)
     num_violations_list.append(num_violations_c)
 
