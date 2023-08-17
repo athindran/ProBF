@@ -75,6 +75,7 @@ class KerasResidualScalarAffineModel(ResidualAffineModel):
     def __init__(self, d_drift_in, d_act_in, d_hidden, m, d_out, us_scale=1, optimizer='sgd', loss='mean_absolute_error'):
         drift_model = Sequential()
         drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
+        drift_model.add(Dense(d_hidden, input_shape=(d_drift_in,), activation='relu'))
         drift_model.add(Dense(d_out))
         self.drift_model = drift_model
         self.us_scale = us_scale
@@ -83,6 +84,7 @@ class KerasResidualScalarAffineModel(ResidualAffineModel):
         drift_residuals = self.drift_model(drift_inputs)
 
         act_model = Sequential()
+        act_model.add(Dense(d_hidden, input_shape=(d_act_in,), activation='relu'))
         act_model.add(Dense(d_hidden, input_shape=(d_act_in,), activation='relu'))
         act_model.add(Dense(d_out * m))
         act_model.add(Reshape((d_out, m)))
