@@ -1,7 +1,4 @@
 from numpy import dot, maximum
-from numpy.linalg import solve
-from numpy import sign
-from scipy.linalg import sqrtm
 import cvxpy as cp
 import numpy as np
 import scipy
@@ -52,8 +49,8 @@ class FilterControllerVar2(Controller):
         sigma = self.sigma
         
         # If sigma is very small, there is no need to explicitly use the variance
-        if(sigma<0.05):
-            return self.eval_novar(x, t, phi0, phi1, uc)
+        #if(sigma<0.05):
+        #return self.eval_novar(x, t, phi0, phi1, uc)
         
         # Constructing the matrices of the convex program
         deltaf = np.array([[vara[0],0,varab[0],0],[0,vara[1],varab[1],0],[varab[0],varab[1],varb[0],0],[0,0,0,0]])
@@ -85,7 +82,8 @@ class FilterControllerVar2(Controller):
           if prob.status in ["optimal", "optimal_inaccurate"]:
             ucurr = [u[0].value, u[1].value]
           else:
-            ucurr = self.eval_novar(x, t, phi0, phi1, uc)
+            ucurr = uc
+            #ucurr = self.eval_novar(x, t, phi0, phi1, uc)
           print("Sigma reduced to:", sigma)
         else:
           ucurr = [u[0].value, u[1].value]
