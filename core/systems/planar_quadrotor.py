@@ -1,6 +1,6 @@
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
-from numpy import append, arange, arctan, array, concatenate, cos, reshape, sin, zeros
+from numpy import append, arange, arctan, array, concatenate, cos, reshape, sin, zeros, clip
 
 from core.dynamics import FBLinDynamics, RoboticDynamics, SystemDynamics
 from core.util import default_fig
@@ -42,6 +42,9 @@ class PlanarQuadrotor(RoboticDynamics):
             # u_0 is input to extension
             f_ddot, tau = u_0
 
+            #f_ddot = clip(f_ddot, -10, 10)
+            #tau = clip(tau, -10, 10)
+
             # u is input to actual system
             u = array([f, tau])
 
@@ -50,7 +53,7 @@ class PlanarQuadrotor(RoboticDynamics):
             f_dot += f_ddot * dt
             x = self.quad.step(x, u, t_0, t_f, atol, rtol)
 
-            return concatenate([x, array([f, f_dot])])
+            return concatenate([x, array([f, f_dot])]), u
 
     class Output(FBLinDynamics):
         def __init__(self, extension):
