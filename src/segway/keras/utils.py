@@ -2,7 +2,7 @@ from .handlers import SafetyAngleAngleRate
 from core.controllers import FilterController
 
 # Angle-Angle Rate Safety QP Setup
-def initializeSafetyFilter(seg_est, seg_true, pd):
+def initializeSafetyFilter(seg_est, seg_true, alpha, pd):
     """
     Initialize CBFs for the true and estimated system.
     
@@ -24,7 +24,6 @@ def initializeSafetyFilter(seg_est, seg_true, pd):
 
     safety_est = SafetyAngleAngleRate( seg_est, theta_e, angle_max, coeff )
     safety_true = SafetyAngleAngleRate( seg_true, theta_e, angle_max, coeff)
-    alpha = 10
     comp_safety = lambda r: alpha * r
     phi_0_est = lambda x, t: safety_est.drift( x, t ) + comp_safety( safety_est.eval( x, t ) )
     phi_1_est = lambda x, t: safety_est.act( x, t )
