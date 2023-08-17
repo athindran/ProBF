@@ -30,14 +30,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print("Device", device)
 
 def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned,
-                        safety_true, figure_dir="./"):
+                        safety_true, freq, tend, figure_dir="./"):
     # Phase Plane Plotting
     phi_0_learned = lambda x, t: safety_learned.drift_act_learned( x, t )   
     #phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
-    _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+    _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true=seg_true, seg_est=seg_est, flt_true=flt_true, flt_est=flt_est, freq=freq, tend=tend)
 
-    freq = 500 # Hz 
-    tend = 3
     ts_post_qp = linspace(0, tend, tend*freq + 1)
 
     xs_qp_trueest, _ = qp_trueest_data
@@ -84,17 +82,17 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       fig.savefig(savename, bbox_inches='tight')
 
 def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, 
-                        safety_true, x_0s_test, rnd_seed, num_episodes=5, num_tests=10, delta=0.0, figure_dir="./"):                       
+                        safety_true, x_0s_test, rnd_seed, freq, tend, num_episodes=5, num_tests=10, delta=0.0, figure_dir="./", plotting=True):                       
   """
     Evaluate trained model and plot various comparisons
   """
   num_violations = 0
 
   # QP simulation comapre trues and estimate for plots
-  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true=seg_true, seg_est=seg_est, flt_true=flt_true, flt_est=flt_est, freq=freq, tend=tend)
   #hs_qp_estest, drifts_qp_estest, acts_qp_estest, hdots_qp_estest = findSafetyData(safety_est, qp_estest_data, ts_qp)
-  hs_qp_truetrue, _, _, _ = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
-  hs_qp_trueest, _, _, _ = findSafetyData(safety_true, qp_trueest_data, ts_qp)
+  hs_qp_truetrue, _, _, _ = findSafetyData(safety_filt=safety_true, sim_data=qp_truetrue_data, ts_qp=ts_qp)
+  hs_qp_trueest, _, _, _ = findSafetyData(safety_filt=safety_true, sim_data=qp_trueest_data, ts_qp=ts_qp)
 
   #xs_qp_estest, us_qp_estest = qp_estest_data
   xs_qp_trueest, us_qp_trueest = qp_trueest_data
@@ -102,7 +100,7 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
 
   phi_0_learned = lambda x, t: safety_learned.drift_act_learned( x, t )   
   #phi_1_learned = lambda x, t: safety_learned.act_learned( x, t )
-  flt_learned = FilterControllerQCQP( seg_est, phi_0_learned, pd, delta)
+  flt_learned = FilterControllerQCQP( affine_dynamics=seg_est, phi_0=phi_0_learned, desired_controller=pd, delta=delta)
 
   freq = 500 # Hz 
   tend = 3
@@ -122,46 +120,54 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
     # Learned Controller Simulation
     # Use Learned Controller
     x_0 = x_0s_test[i, :]
-    qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
+    qp_data_post = seg_true.simulate(x_0=x_0, controller=flt_learned, ts=ts_post_qp)
     xs_post_qp, us_post_qp = qp_data_post
 
-    data_episode = safety_learned.process_episode(xs_post_qp, us_post_qp, ts_post_qp)
+    data_episode = safety_learned.process_episode(xs=xs_post_qp, us=us_post_qp, ts=ts_post_qp)
     
-    # Plot of residual predictions from GP
-    savename = figure_dir + "/residual_predict_seed{}_test{}.png".format(str(rnd_seed), str(i))
-    plotPredictions(safety_learned, data_episode, savename, device=device)
+    if plotting:
+      # Plot of residual predictions from GP
+      savename = figure_dir + "/residual_predict_seed{}_test{}.png".format(str(rnd_seed), str(i))
+      plotPredictions(safety_learned, data_episode, savename, device=device)
 
-    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_gp(safety_learned, qp_data_post, ts_post_qp)
+    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_gp(safety_learned=safety_learned, sim_data=qp_data_post, 
+                                                                                                                  ts_post_qp=ts_post_qp)
    
     # check violation of safety
     if np.any(hs_post_qp < 0):
       num_violations += 1
     
-    _, drifts_post_qp, acts_post_qp, hdots_post_qp = findSafetyData(safety_est, qp_data_post, ts_post_qp)
-    _, drifts_true_post_qp, acts_true_post_qp, hdots_true_post_qp = findSafetyData(safety_true, qp_data_post, ts_post_qp)
+    _, drifts_post_qp, acts_post_qp, hdots_post_qp = findSafetyData(safety_filt=safety_est, sim_data=qp_data_post, ts_qp=ts_post_qp)
+    _, drifts_true_post_qp, acts_true_post_qp, hdots_true_post_qp = findSafetyData(safety_filt=safety_true, sim_data=qp_data_post, ts_qp=ts_post_qp)
     
     theta_bound_u = ( safety_true.theta_e + safety_true.angle_max ) * ones( size( ts_post_qp ) )
     theta_bound_l = ( safety_true.theta_e - safety_true.angle_max ) * ones( size( ts_post_qp ) )
 
-    # Plotting
-    savename = figure_dir+"/learned_filter_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
-    plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, 
-                    us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
-                        drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, 
-                            theta_bound_u, theta_bound_l, savename)
+    if plotting:
+      # Plotting
+      savename = figure_dir+"/learned_filter_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
+      plotTestStates(ts_qp=ts_qp, ts_post_qp=ts_post_qp, xs_qp_trueest=xs_qp_trueest, xs_qp_truetrue=xs_qp_truetrue, xs_post_qp=xs_post_qp, 
+                     us_qp_trueest=us_qp_trueest, us_qp_truetrue=us_qp_truetrue, 
+                    us_post_qp=us_post_qp, hs_qp_trueest=hs_qp_trueest, hs_qp_truetrue=hs_qp_truetrue, hs_post_qp=hs_post_qp, 
+                    hdots_post_qp=hdots_post_qp, hdots_true_post_qp=hdots_true_post_qp, hdots_learned_post_qp=hdots_learned_post_qp , 
+                        drifts_post_qp=drifts_post_qp, drifts_true_post_qp=drifts_true_post_qp, drifts_learned_post_qp=drifts_learned_post_qp, 
+                        acts_post_qp=acts_post_qp, acts_true_post_qp=acts_true_post_qp, acts_learned_post_qp=acts_learned_post_qp, 
+                            theta_bound_u=theta_bound_u, theta_bound_l=theta_bound_l, savename=savename)
     
-    # Learned CBF safety filter
-    savename = figure_dir + "/learned_h_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
-    plotLearnedCBF(ts_qp, hs_qp_trueest, np.array( hs_all ).ravel(), ts_post_qp, hs_post_qp, ebs, num_episodes, savename)
+      # Learned CBF safety filter
+      savename = figure_dir + "/learned_h_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
+      plotLearnedCBF(ts_qp=ts_qp, hs_qp_trueest=hs_qp_trueest, hs_all=np.array( hs_all ).ravel(), ts_post_qp=ts_post_qp, 
+                     hs_post_qp=hs_post_qp, ebs=ebs, num_episodes=num_episodes, savename=savename)
     
-    # Phase Plane Plotting
-    epsilon = 1e-6
-    theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
-    theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
-    ebs = int(len(state_data[0])/num_episodes)
+      # Phase Plane Plotting
+      epsilon = 1e-6
+      theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
+      theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
+      ebs = int(len(state_data[0])/num_episodes)
     
-    savename = figure_dir + "/learned_pp_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
-    plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, xs_post_qp, ebs, num_episodes, savename)
+      savename = figure_dir + "/learned_pp_seed{}_run{}_delta{}.png".format(str(rnd_seed), str(i), str(delta))
+      plotPhasePlane(theta_h0_vals=theta_h0_vals, theta_dot_h0_vals=theta_dot_h0_vals, xs_qp_trueest=xs_qp_trueest, 
+                     state_data=state_data, xs_post_qp=xs_post_qp, ebs=ebs, num_episodes=num_episodes, savename=savename)
 
   # record violations
   print("seed: {}, num of violations: {}".format(rnd_seed, str(num_violations)))
@@ -230,11 +236,11 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
   #residual_pred_upper_list = []
 
   # Iterate through each episode
-  for i in range(num_episodes):
-      print("Episode:", i+1)
+  for iters in range(num_episodes):
+      print("Episode:", iters + 1)
       # Controller Combination
-      flt_combined = CombinedController( flt_baseline, flt_learned, array([1 - weights[i], weights[i]]) )
-      x_0 = x_0s[i,:]
+      flt_combined = CombinedController( flt_baseline, flt_learned, array([1 - weights[iters], weights[iters]]) )
+      x_0 = x_0s[iters,:]
       print("Initial state in Episode: ", x_0)
       start_time = time.time()
       sim_data = seg_true.simulate(x_0, flt_combined, ts_qp)
@@ -309,7 +315,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       ndata = input_data.shape[0]
       print("Number of data points: ", ndata)
 
-      if i > 0:
+      if iters > 0:
           ustd_list.append(us_scale)
       
       likelihood = gpytorch.likelihoods.GaussianLikelihood()
@@ -319,12 +325,12 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       
       residual_model = ExactGPModel(input_data_tensor, residuals_tensor, likelihood)
 
-      if i == 0:
+      if iters == 0:
           # save random initialization model      
           torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(0)))
           adam_lr = 0.03
           training_iter = 200
-      elif i >= 10:
+      elif iters >= 10:
           state_dict = torch.load(model_dir + "residual_model_iter_{}.pth".format(str(0)))
           residual_model.load_state_dict(state_dict)
           adam_lr = 0.04
@@ -391,17 +397,23 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       print("kernel lengthscale for b(x)", residual_model.covar_module.kernels[1].base_kernel.lengthscale)
       print("kernel scale for b(x)", residual_model.covar_module.kernels[1].outputscale.item())
       # save the current gp model with hyperparams
-      torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(i+1)))
+      torch.save(residual_model.state_dict(), model_dir + "residual_model_iter_{}.pth".format(str(iters+1)))
       
+      residual_model.eval()
+      likelihood.eval()
+
       safety_learned = LearnedSegwaySafetyAAR_gpytorch( safety_est, device=device)
       
       safety_learned.residual_model = residual_model
       safety_learned.likelihood = likelihood
       safety_learned.us_scale = us_scale
 
-      # Evaluate covariance matrix with the data  
-      safety_learned.Kinv = torch.pinverse( residual_model.covar_module( input_data_tensor ).evaluate() + residual_model.likelihood.noise.item()*torch.eye( input_data_tensor.shape[0] ).to(device) )  
-      safety_learned.alpha = torch.matmul(safety_learned.Kinv, torch.from_numpy(residuals).float().to(device) )
+      # Evaluate covariance matrix with the data
+      A = residual_model.covar_module( input_data_tensor ).evaluate() + residual_model.likelihood.noise.item()*torch.eye( input_data_tensor.shape[0] ).to(device)  
+      L = torch.linalg.cholesky(A)
+      safety_learned.Kinv = torch.inverse( L.T ) @ torch.inverse( L )
+      b = torch.from_numpy(residuals).float().to(device)
+      safety_learned.alpha = safety_learned.Kinv @ b
       safety_learned.input_data_tensor = input_data_tensor
       safety_learned.preprocess_mean = torch.from_numpy( preprocess_mean[0] )
       safety_learned.preprocess_std = torch.from_numpy( preprocess_std[0] )
@@ -411,7 +423,27 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
       phi_0_learned = safety_learned.drift_act_learned 
       #phi_1_learned = safety_learned.act_learned
       flt_learned = FilterControllerQCQP( seg_est, phi_0_learned, pd, delta=delta_train)
-      
+      """
+      if iters>=2:
+        num_violations = []
+        figure_quant_dir = figure_dir + "quant/" 
+        if not os.path.isdir(figure_quant_dir):
+          os.mkdir(figure_quant_dir)
+
+        figure_episode_quant_dir = figure_quant_dir + "episode_" + str(iters + 1)
+
+        if not os.path.isdir(figure_episode_quant_dir):
+          os.mkdir(figure_episode_quant_dir)
+
+        for delta_v in delta_val:
+          num_violations_c = run_full_evaluation(seg_est=seg_est, seg_true=seg_true, flt_est=flt_est, flt_true=flt_true, pd=pd, state_data=state_data, 
+                                           safety_learned=safety_learned, safety_est=safety_est, safety_true=safety_true, 
+                                           x_0s_test=x_0s_test, rnd_seed=rnd_seed, num_episodes=num_episodes, num_tests=num_tests, delta=delta_v, 
+                                           freq=freq, tend=tend,
+                                           figure_dir=figure_episode_quant_dir, plotting=False)
+          num_violations.append( num_violations_c )
+          print("Episode number, viol: ", iters + 1, num_violations)
+      """
   print(residual_model.covar_module.kernels[0].kernels[1].outputscale)
   print(residual_model.covar_module.kernels[1].outputscale)
   print(residual_model.covar_module.kernels[0].kernels[1].base_kernel.lengthscale)
@@ -433,18 +465,21 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
     #print("viol-0.5: ", num_violations_b)
     
     for delta_v in delta_val:
-      num_violations_c = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
-                                           safety_learned, safety_est, safety_true, 
-                                           x_0s_test, rnd_seed, num_episodes, num_tests, delta_v, 
-                                           figure_quant_dir)
-      num_violations.append( num_violations_c )
+          num_violations_c = run_full_evaluation(seg_est=seg_est, seg_true=seg_true, flt_est=flt_est, flt_true=flt_true, pd=pd, state_data=state_data, 
+                                           safety_learned=safety_learned, safety_est=safety_est, safety_true=safety_true, 
+                                           x_0s_test=x_0s_test, rnd_seed=rnd_seed, num_episodes=num_episodes, num_tests=num_tests, delta=delta_v, 
+                                           freq=freq, tend=tend, figure_dir=figure_quant_dir, plotting=False)
+          
+          print("delta, viol: ", num_violations_c)
+    num_violations.append( num_violations_c )
     print("viol: ", num_violations)
   
   if run_qual_evaluation:
     figure_qual_dir = figure_dir + "qual/" 
     if not os.path.isdir(figure_qual_dir):
       os.mkdir(figure_qual_dir)
-    run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, safety_true, figure_qual_dir)
+    run_qualitative_evaluation(seg_est=seg_est, seg_true=seg_true, flt_est=flt_est, flt_true=flt_true, pd=pd, safety_learned=safety_learned, safety_true=safety_true, 
+                               freq=freq, tend=tend, figure_dir=figure_qual_dir)
   return num_violations
 
 def run_validation():
@@ -517,14 +552,13 @@ def run_validation():
       print("Std violations", np.std(num_violations_array[:, deltatrain_index, deltatest_index]))
 
 def run_testing():
-  #rnd_seed_list = [123, 234]  
+  #rnd_seed_list = [123]  
   rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12 ]
   # Episodic Learning Setup
   num_violations_list = []
-  num_episodes = 5
+  num_episodes = 1
 
-  #experiment_name = "runall_quant_reproduce_allseeds"
-  experiment_name = "increase_alpha_helps"
+  experiment_name = "numepisodes1"
 
   parent_path = "/scratch/gpfs/arkumar/ProBF/"
   parent_path = os.path.join(parent_path, experiment_name)
@@ -555,10 +589,10 @@ def run_testing():
 
     print_logger = PrintLogger(os.path.join(figure_dirs, 'log.txt'))
     sys.stdout = print_logger
-    sys.stderr = print_logger 
+    sys.stderr = print_logger
 
     num_violations_c = run_segway_gp_training(rnd_seed, num_episodes, model_dirs, figure_dirs, 
-                                                num_tests=10, delta_train=0.0, delta_val=[1.0], run_quant_evaluation=True, run_qual_evaluation=True)
+                                                num_tests=10, delta_train=0.0, delta_val=[0.0, 0.5, 1.0, 1.5], run_quant_evaluation=True, run_qual_evaluation=False)
     print("No. of violations", num_violations_c)
     num_violations_list.append(num_violations_c)
 

@@ -248,7 +248,9 @@ def plotQuadStatesv2(axes2, ts_qp, xs_qp, us_qp, hs_qp, hdots_qp, label='TrueEst
     axes2[1, 2].set_ylabel('$\\dot{h}$', fontsize=fs)
     axes2[1, 2].legend(fontsize=fs)
 
-def plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, theta_bound_u, theta_bound_l, savename):
+def plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, us_post_qp, hs_qp_trueest, 
+                   hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , drifts_post_qp, drifts_true_post_qp, 
+                   drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, theta_bound_u, theta_bound_l, savename):
     
     f = figure(figsize=(16, 16))
     subplot(521)

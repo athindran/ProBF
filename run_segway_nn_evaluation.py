@@ -30,7 +30,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 
 def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, comp_safety,
-                        safety_true, figure_dir="./"):
+                        safety_true, freq, tend, figure_dir="./"):
     from core.controllers import FilterController
     # Phase Plane Plotting
     # Use Learned Controller
@@ -38,7 +38,7 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
     phi_1_learned = lambda x, t: safety_learned.act( x, t )
     flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
 
-    _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+    _, _, qp_trueest_data, _ = simulateSafetyFilter(seg_true=seg_true, seg_est=seg_est, flt_true=flt_true, flt_est=flt_est, freq=freq, tend=tend)
 
     freq = 500 # Hz 
     tend = 3
@@ -65,7 +65,7 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       savename = figure_dir + "/learned_pp_run{}.png".format(str(i))
       
       x_0 = x_0s_test[i, :]
-      flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd)
+      flt_learned = FilterController( affine_dynamics=seg_est, phi_0=phi_0_learned, phi_1=phi_1_learned, desired_controller=pd )
       qp_data_post = seg_true.simulate(x_0, flt_learned, ts_post_qp)
       xs_post_qp, _ = qp_data_post 
 
@@ -87,27 +87,28 @@ def run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_
       fig.savefig(savename, bbox_inches='tight')
 
 
-def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, comp_safety, x_0s_test, num_tests, save_dir):                       
+def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, safety_learned, safety_est, safety_true, 
+                        comp_safety, x_0s_test, num_tests, freq, tend, figure_dir, plotting=True):                      
   from core.controllers import FilterController
   # test for 10 different random points
   num_violations = 0
-  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est)
+  _, qp_truetrue_data, qp_trueest_data, ts_qp = simulateSafetyFilter(seg_true=seg_true, seg_est=seg_est, flt_true=flt_true, 
+                                                                     flt_est=flt_est, freq=freq, tend=tend)
   #hs_qp_estest, drifts_qp_estest, acts_qp_estest, hdots_qp_estest = findSafetyData(safety_est, qp_estest_data, ts_qp)
-  hs_qp_truetrue, _, _, _ = findSafetyData(safety_true, qp_truetrue_data, ts_qp)
-  hs_qp_trueest, _, _, _ = findSafetyData(safety_true, qp_trueest_data, ts_qp)
+  hs_qp_truetrue, _, _, _ = findSafetyData(safety_filt=safety_true, sim_data=qp_truetrue_data, ts_qp=ts_qp)
+  hs_qp_trueest, _, _, _ = findSafetyData(safety_filt=safety_true, sim_data=qp_trueest_data, ts_qp=ts_qp)
 
   #xs_qp_estest, us_qp_estest = qp_estest_data
   xs_qp_trueest, us_qp_trueest = qp_trueest_data
   xs_qp_truetrue, us_qp_truetrue = qp_truetrue_data
 
-  freq = 500 # Hz
-  tend = 3
   ts_post_qp = linspace(0, tend, tend*freq + 1)
 
   # Use Learned Controller
   phi_0_learned = lambda x, t: safety_learned.drift( x, t ) + comp_safety( safety_learned.eval( x, t ) )
   phi_1_learned = lambda x, t: safety_learned.act( x, t )
-  flt_learned = FilterController( seg_est, phi_0_learned, phi_1_learned, pd )
+
+  flt_learned = FilterController( affine_dynamics=seg_est, phi_0=phi_0_learned, phi_1=phi_1_learned, desired_controller=pd )
 
   ebs = int(len(state_data[0])/num_episodes)
   
@@ -118,46 +119,51 @@ def run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, sa
     xs_post_qp, us_post_qp = qp_data_post
 
     #data_episode = safety_learned.process_episode(xs_post_qp, us_post_qp, ts_post_qp)
-    savename = save_dir+"residual_predict_seed{}_run{}.png".format(str(rnd_seed),str(i))
-    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_nn(safety_learned, qp_data_post, ts_post_qp)
+    savename = figure_dir + "residual_predict_seed{}_run{}.png".format(str(rnd_seed),str(i))
+    drifts_learned_post_qp, acts_learned_post_qp, hdots_learned_post_qp, hs_post_qp, _ = findLearnedSafetyData_nn(safety_learned=safety_learned, 
+                                                                                                                  sim_data=qp_data_post, ts_post_qp=ts_post_qp)
    
     # check violation of safety
     if np.any(hs_post_qp < 0):
       num_violations += 1
     
-    _, drifts_post_qp, acts_post_qp, hdots_post_qp = findSafetyData(safety_est, qp_data_post, ts_post_qp)
-    _, drifts_true_post_qp, acts_true_post_qp, hdots_true_post_qp = findSafetyData(safety_true, qp_data_post, ts_post_qp)
+    if plotting:
+      _, drifts_post_qp, acts_post_qp, hdots_post_qp = findSafetyData(safety_filt=safety_est, sim_data=qp_data_post, ts_qp=ts_post_qp)
+      _, drifts_true_post_qp, acts_true_post_qp, hdots_true_post_qp = findSafetyData(safety_filt=safety_true, sim_data=qp_data_post, ts_qp=ts_post_qp)
     
-    theta_bound_u = ( safety_true.theta_e + safety_true.angle_max ) * ones( size( ts_post_qp ) )
-    theta_bound_l = ( safety_true.theta_e - safety_true.angle_max ) * ones( size( ts_post_qp ) )
+      theta_bound_u = ( safety_true.theta_e + safety_true.angle_max ) * ones( size( ts_post_qp ) )
+      theta_bound_l = ( safety_true.theta_e - safety_true.angle_max ) * ones( size( ts_post_qp ) )
 
-    # Plotting
-    savename = save_dir+"learned_controller_seed{}_run{}.png".format(str(rnd_seed),str(i))
-    plotTestStates(ts_qp, ts_post_qp, xs_qp_trueest, xs_qp_truetrue, xs_post_qp, us_qp_trueest, us_qp_truetrue, 
-                    us_post_qp, hs_qp_trueest, hs_qp_truetrue, hs_post_qp, hdots_post_qp, hdots_true_post_qp, hdots_learned_post_qp , 
-                      drifts_post_qp, drifts_true_post_qp, drifts_learned_post_qp, acts_post_qp, acts_true_post_qp, acts_learned_post_qp, 
-                      theta_bound_u, theta_bound_l, savename)
+      # Plotting
+      savename = figure_dir + "learned_controller_seed{}_run{}.png".format(str(rnd_seed),str(i))
+      plotTestStates(ts_qp=ts_qp, ts_post_qp=ts_post_qp, xs_qp_trueest=xs_qp_trueest, xs_qp_truetrue=xs_qp_truetrue, xs_post_qp=xs_post_qp, 
+                     us_qp_trueest=us_qp_trueest, us_qp_truetrue=us_qp_truetrue, 
+                    us_post_qp=us_post_qp, hs_qp_trueest=hs_qp_trueest, hs_qp_truetrue=hs_qp_truetrue, hs_post_qp=hs_post_qp, 
+                    hdots_post_qp=hdots_post_qp, hdots_true_post_qp=hdots_true_post_qp, hdots_learned_post_qp=hdots_learned_post_qp , 
+                        drifts_post_qp=drifts_post_qp, drifts_true_post_qp=drifts_true_post_qp, drifts_learned_post_qp=drifts_learned_post_qp, 
+                        acts_post_qp=acts_post_qp, acts_true_post_qp=acts_true_post_qp, acts_learned_post_qp=acts_learned_post_qp, 
+                            theta_bound_u=theta_bound_u, theta_bound_l=theta_bound_l, savename=savename)
 
-    hs_all = []
+      hs_all = []
 
-    for ep in range(num_episodes):
-      xs_curr = state_data[0][ ep*ebs:(ep+1)*ebs ] 
-      hs_curr = array([safety_learned.eval(x,t) for x, t in zip(xs_curr, ts_post_qp)])
-      hs_all.append( hs_curr.ravel() )
+      for ep in range(num_episodes):
+        xs_curr = state_data[0][ ep*ebs:(ep+1)*ebs ] 
+        hs_curr = array([safety_learned.eval(x,t) for x, t in zip(xs_curr, ts_post_qp)])
+        hs_all.append( hs_curr.ravel() )
 
-    # # LEARNED CONTROLLER
-    savename = save_dir+"learned_h_seed{}_run{}.png".format(str(rnd_seed), str(i))
-    plotLearnedCBF(ts_qp, hs_qp_trueest, np.array( hs_all ).ravel(), ts_post_qp, hs_post_qp, ebs, num_episodes, savename)
+      # # LEARNED CONTROLLER
+      #savename = figure_dir + "learned_h_seed{}_run{}.png".format(str(rnd_seed), str(i))
+      #plotLearnedCBF(ts_qp=ts_qp, hs_qp_trueest=hs_qp_trueest, hs_all=np.array( hs_all ).ravel(), ts_post_qp=ts_post_qp, 
+      #                 hs_post_qp=hs_post_qp, ebs=ebs, num_episodes=num_episodes, savename=savename)    
+      # Phase Plane Plotting
+      epsilon=1e-6
+      theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
+      theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
+      ebs = int(len(state_data[0])/num_episodes)
     
-    # Phase Plane Plotting
-    epsilon=1e-6
-    theta_h0_vals = linspace(safety_true.theta_e-safety_true.angle_max+epsilon, safety_true.theta_e + safety_true.angle_max - epsilon, 1000)
-    theta_dot_h0_vals = array([sqrt((safety_true.angle_max ** 2 - (theta - safety_true.theta_e) ** 2) /safety_true.coeff) for theta in theta_h0_vals])
-    ebs = int(len(state_data[0])/num_episodes)
-    
-    savename = save_dir+"learned_pp_seed{}_run{}.png".format(str(rnd_seed), str(i))
-    plotPhasePlane(theta_h0_vals, theta_dot_h0_vals, xs_qp_trueest, state_data, xs_post_qp, ebs, num_episodes, savename)
-
+      savename = figure_dir + "learned_pp_seed{}_run{}.png".format(str(rnd_seed), str(i))
+      plotPhasePlane(theta_h0_vals=theta_h0_vals, theta_dot_h0_vals=theta_dot_h0_vals, xs_qp_trueest=xs_qp_trueest, 
+                     state_data=state_data, xs_post_qp=xs_post_qp, ebs=ebs, num_episodes=num_episodes, savename=savename)
   # record violations
   print("seed: {}, num of violations: {}".format(rnd_seed, str(num_violations)))
   return num_violations
@@ -169,9 +175,9 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
   seed(rnd_seed)
 
   seg_est, seg_true, _, _, pd = initializeSystem()
-  safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(seg_est, seg_true, pd)
+  alpha = 3
+  safety_est, safety_true, flt_est, flt_true = initializeSafetyFilter(seg_est, seg_true, alpha, pd)
 
-  alpha = 1
   comp_safety = lambda r: alpha * r
   
   d_drift_in_seg = 8
@@ -212,13 +218,13 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
  
   # Episodic Learning
   # Iterate through each episode
-  for i in range(num_episodes):
-    print("Episode:", i+1)
+  for iters in range(num_episodes):
+    print("Episode:", iters+1)
     # Controller Combination
-    flt_combined = CombinedController( flt_baseline, flt_learned, array([1-weights[i], weights[i]]) )
+    flt_combined = CombinedController( flt_baseline, flt_learned, array([1-weights[iters], weights[iters]]) )
     
     # Simulation
-    x_0 = x_0s[i,:]
+    x_0 = x_0s[iters,:]
     print("x_0", x_0)
     start_time = time.time()
     sim_data = seg_true.simulate(x_0, flt_combined, ts_qp)
@@ -256,16 +262,17 @@ def run_segway_nn_training(rnd_seed, num_episodes, num_tests, save_dir, run_quan
     if not os.path.isdir(figure_quant_dir):
       os.mkdir(figure_quant_dir)
 
-    num_violations = run_full_evaluation(seg_est, seg_true, flt_est, flt_true, pd, state_data, 
-                                       safety_learned, safety_est, safety_true, comp_safety, 
-                                       x_0s_test, num_tests, figure_quant_dir)
+    num_violations = run_full_evaluation(seg_est=seg_est, seg_true=seg_true, flt_est=flt_est, flt_true=flt_true, pd=pd, state_data=state_data, 
+                                       safety_learned=safety_learned, safety_est=safety_est, safety_true=safety_true, comp_safety=comp_safety, 
+                                       x_0s_test=x_0s_test, num_tests=num_tests, figure_dir=figure_quant_dir, freq=freq, tend=tend, plotting=True)
   if run_qual_evaluation:
     figure_qual_dir = save_dir + "qual/"
     if not os.path.isdir(figure_qual_dir):
       os.mkdir(figure_qual_dir)
 
-    run_qualitative_evaluation(seg_est, seg_true, flt_est, flt_true, pd, safety_learned, comp_safety,
-                        safety_true, figure_qual_dir)
+    run_qualitative_evaluation(seg_est=seg_est, seg_true=seg_true, flt_est=flt_est, flt_true=flt_true, pd=pd, safety_learned=safety_learned, comp_safety=comp_safety,
+                        safety_true=safety_true, figure_dir=figure_qual_dir, freq=freq, tend=tend)
+  
   return num_violations
 
 
@@ -275,42 +282,42 @@ if __name__=='__main__':
   # Episodic Learning Setup
 
   #experiment_name = "reproduce_seg_nn_all_seeds"
-  experiment_name = "debug_again"
+  for num_episodes in [2, 3, 4, 5, 6, 7]:
+    experiment_name = "numepisodes" + str(num_episodes) + "_alphasmaller"
 
-  parent_path = "/scratch/gpfs/arkumar/ProBF/"
-  parent_path = os.path.join(parent_path, experiment_name)
+    parent_path = "/scratch/gpfs/arkumar/ProBF/"
+    parent_path = os.path.join(parent_path, experiment_name)
 
-  if not os.path.isdir(parent_path):
-    os.mkdir(parent_path)
-    os.mkdir( os.path.join(parent_path, "exps") )
-    os.mkdir( os.path.join(parent_path, "models") )
+    if not os.path.isdir(parent_path):
+      os.mkdir(parent_path)
+      os.mkdir( os.path.join(parent_path, "exps") )
+      os.mkdir( os.path.join(parent_path, "models") )
 
-  figure_path = os.path.join(parent_path, "exps/segway_modular_nn/")
-  model_path = os.path.join(parent_path, "models/segway_modular_nn/")
+    figure_path = os.path.join(parent_path, "exps/segway_modular_nn/")
+    model_path = os.path.join(parent_path, "models/segway_modular_nn/")
 
-  if not os.path.isdir(figure_path):
-    os.mkdir(figure_path)
+    if not os.path.isdir(figure_path):
+      os.mkdir(figure_path)
 
-  if not os.path.isdir(model_path):
-    os.mkdir(model_path)
+    if not os.path.isdir(model_path):
+      os.mkdir(model_path)
 
-  num_violations_list = []
-  num_episodes = 5
-  num_tests = 10
-  print_logger = None
-  for rnd_seed in rnd_seed_list:
-    dirs = figure_path + str(rnd_seed) + "/"
+    num_violations_list = []
+    num_tests = 10
+    print_logger = None
+    for rnd_seed in rnd_seed_list:
+      dirs = figure_path + str(rnd_seed) + "/"
 
-    if not os.path.isdir(dirs):
-      os.mkdir(dirs) 
+      if not os.path.isdir(dirs):
+        os.mkdir(dirs) 
   
-    print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
-    sys.stdout = print_logger
-    sys.stderr = print_logger
+      print_logger = PrintLogger(os.path.join(dirs, 'log.txt'))
+      sys.stdout = print_logger
+      sys.stderr = print_logger
 
-    num_violations = run_segway_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
-    num_violations_list.append(num_violations)
+      num_violations = run_segway_nn_training(rnd_seed, num_episodes, num_tests, dirs, run_quant_evaluation=True, run_qual_evaluation=False)
+      num_violations_list.append(num_violations)
 
-  print_logger.reset(os.path.join(figure_path, 'log.txt'))
-  print_logger.reset(os.path.join(figure_path, 'log.txt')) 
-  print("num_violations_list: ", num_violations_list)
+    print_logger.reset(os.path.join(figure_path, 'log.txt'))
+    print_logger.reset(os.path.join(figure_path, 'log.txt')) 
+    print("num_violations_list: ", num_violations_list)

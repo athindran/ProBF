@@ -109,7 +109,7 @@ def simulatePDplot(seg_est, seg_true, pd):
     legend(fontsize =16)
 
 
-def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est, x_0=array([0, 0.2, 0.2, 0.1])):
+def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est, freq, tend, x_0=array([0, 0.2, 0.2, 0.1])):
     """
     Simulate the system with the CBF-QP filtering the actions.
 
@@ -126,8 +126,6 @@ def simulateSafetyFilter(seg_true, seg_est, flt_true, flt_est, x_0=array([0, 0.2
         ts_qp: Sampling instants array
     """
     # Angle-Angle Rate Safety QP Simulation
-    freq = 500 # Hz
-    tend = 3
     ts_qp = linspace(0, tend, tend*freq + 1)
 
     # Estimated System - Estimated Filter
