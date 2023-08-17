@@ -5,6 +5,7 @@ This code compares the our ProBF-GP framework with the prior art learned Control
 
 ![image](images/segwaycomp.JPG)
 
+This page will be updated further
 
 # Authors
 [Athindran Ramesh Kumar](https://sites.google.com/site/athindranrameshkumar)
