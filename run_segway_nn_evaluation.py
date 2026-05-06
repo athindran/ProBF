@@ -285,7 +285,7 @@ if __name__=='__main__':
   for num_episodes in [2, 3, 4, 5, 6, 7]:
     experiment_name = "numepisodes" + str(num_episodes) + "_alphasmaller"
 
-    parent_path = "/scratch/gpfs/arkumar/ProBF/"
+    parent_path = "/Users/athindranrameshkumar/Documents/Code/scratch/ProBF"
     parent_path = os.path.join(parent_path, experiment_name)
 
     if not os.path.isdir(parent_path):

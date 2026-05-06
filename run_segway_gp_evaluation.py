@@ -484,7 +484,7 @@ def run_segway_gp_training(rnd_seed, num_episodes, model_dir, figure_dir, num_te
 
 def run_validation():
   #rnd_seed_list = [124, 235]  
-  rnd_seed_list = [ 124, 235, 346, 457, 568, 679, 780, 891, 902, 13]
+  rnd_seed_list = [ 123, 234, 345, 456, 567, 678, 789, 890, 901, 12]
   
   delta_train_list = np.array([0, 0.5, 1.0])
   delta_val_list = [[0, 0.5, 1.0, 1.5],
@@ -498,7 +498,7 @@ def run_validation():
 
   experiment_name = "runall_validation_bonkers"
 
-  parent_path = "/scratch/gpfs/arkumar/ProBF/"
+  parent_path = "/Users/athindranrameshkumar/Documents/Code/scratch/ProBF"
   parent_path = os.path.join(parent_path, experiment_name)
 
   if not os.path.isdir(parent_path):
@@ -601,4 +601,4 @@ def run_testing():
   print("num_violations_list: ", num_violations_list)
 
 if __name__=='__main__':
-  run_testing()
+  run_validation()

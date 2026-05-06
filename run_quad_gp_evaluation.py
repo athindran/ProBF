@@ -436,7 +436,7 @@ if __name__=='__main__':
   # Episodic Learning Setup
   experiment_name = "check_probfGP"
 
-  parent_path = "/scratch/gpfs/arkumar/ProBF/"
+  parent_path = "/Users/athindranrameshkumar/Documents/Code/scratch/ProBF"
   parent_path = os.path.join(parent_path, experiment_name)
   
   baseline_dir = os.path.join(parent_path, "baseline")
